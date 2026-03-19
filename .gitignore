@@ -11,5 +11,11 @@ __pycache__/
 node_modules/
 playwright-report/
 test-results/
-logs/
-data/
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# Local data
+data/tasks/*.json
+!data/tasks/.gitkeep
