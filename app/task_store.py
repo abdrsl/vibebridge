@@ -87,3 +87,17 @@ def get_task(task_id: str) -> dict[str, Any] | None:
 
     with open(file_path, "r", encoding="utf-8") as f:
         return json.load(f)
+
+def update_task(task_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
+    existing = get_task(task_id)
+    if not existing:
+        return None
+
+    existing.update(updates)
+    existing["updated_at"] = utc_now_iso()
+
+    file_path = TASK_DIR / f"{task_id}.json"
+    with open(file_path, "w", encoding="utf-8") as f:
+        json.dump(existing, f, ensure_ascii=False, indent=2)
+
+    return existing

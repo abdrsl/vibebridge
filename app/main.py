@@ -4,11 +4,12 @@ from typing import Any
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.llm import ask_deepseek_for_design_advice
 from app.task_parser import extract_text_from_feishu_payload
-from app.task_store import save_task, list_tasks, get_task
+from app.task_store import save_task, list_tasks, get_task, update_task
 
 load_dotenv()
 
@@ -85,6 +86,24 @@ def api_get_task(task_id: str):
         "item": task,
     }
 
+class TaskUpdate(BaseModel):
+    status: str | None = None
+    owner: str | None = None
+    notes: str | None = None
+
+
+@app.patch("/tasks/{task_id}")
+def patch_task(task_id: str, payload: TaskUpdate):
+    updates = payload.model_dump(exclude_none=True)
+
+    updated = update_task(task_id, updates)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    return {
+        "ok": True,
+        "task": updated,
+    }
 
 @app.post("/feishu/webhook")
 async def feishu_webhook(body: dict[str, Any]):
