@@ -3,11 +3,11 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.llm import ask_deepseek_for_design_advice
-from app.task_parser import extract_text_from_feishu_payload, build_task_from_text
+from app.task_parser import extract_text_from_feishu_payload
 from app.task_store import save_task, list_tasks, get_task
 
 load_dotenv()
@@ -87,28 +87,21 @@ def api_get_task(task_id: str):
 
 
 @app.post("/feishu/webhook")
-async def feishu_webhook(request: Request):
-    body: dict[str, Any] = await request.json()
-    print("FEISHU_EVENT =", body)
+async def feishu_webhook(body: dict[str, Any]):
+    task = extract_text_from_feishu_payload(body)
+    text = task.get("raw_text", "").strip()
+    status = task.get("status", "queued")
+    llm_result = None
 
-    challenge = body.get("challenge")
-    if challenge:
-        return {"challenge": challenge}
-
-    text = extract_text_from_feishu_payload(body)
-    task = build_task_from_text(text)
-
-    llm_result = ""
-
-    if not text:
-        task["status"] = "ignored"
-    else:
+    if status != "ignored":
         try:
             llm_result = ask_deepseek_for_design_advice(text)
-            task["status"] = "completed"
+            status = "completed"
         except Exception as e:
-            llm_result = f"[LLM_ERROR] {e}"
-            task["status"] = "failed"
+            llm_result = f"LLM error: {e}"
+            status = "failed"
+
+    task["status"] = status
 
     result = {
         "ok": True,
@@ -122,4 +115,3 @@ async def feishu_webhook(request: Request):
     result["saved"] = saved
 
     return result
-

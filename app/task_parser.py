@@ -2,32 +2,37 @@ import json
 from typing import Any
 
 
-def extract_text_from_feishu_payload(body: dict[str, Any]) -> str:
-    # 1) 兼容最简单测试格式
+def extract_text_from_feishu_payload(body: dict[str, Any]) -> dict[str, Any]:
+    # 兼容最简单测试输入：{"text": "..."}
     if "text" in body and isinstance(body["text"], str):
-        return body["text"].strip()
+        text = body["text"].strip()
+        if not text:
+            return {
+                "task_type": "unknown",
+                "raw_text": "",
+                "status": "ignored",
+            }
 
-    # 2) 飞书事件格式：event.message.content 是 JSON 字符串
-    event = body.get("event") or {}
-    message = event.get("message") or {}
-    content = message.get("content")
+        return {
+            "task_type": "design_request",
+            "raw_text": text,
+            "status": "queued",
+        }
 
-    if isinstance(content, str):
+    # 兼容飞书消息结构
+    event = body.get("event", {})
+    message = event.get("message", {})
+    content = message.get("content", "")
+
+    text = ""
+
+    if isinstance(content, str) and content:
         try:
-            parsed = json.loads(content)
-            if isinstance(parsed, dict):
-                text = parsed.get("text", "")
-                if isinstance(text, str):
-                    return text.strip()
-        except json.JSONDecodeError:
-            # 如果 content 不是 JSON，就直接返回原始字符串
-            return content.strip()
+            content_json = json.loads(content)
+            text = content_json.get("text", "").strip()
+        except Exception:
+            text = content.strip()
 
-    # 3) 兜底
-    return ""
-
-
-def build_task_from_text(text: str) -> dict[str, Any]:
     if not text:
         return {
             "task_type": "unknown",
