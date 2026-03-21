@@ -18,3 +18,5 @@ pytest
 pytest-asyncio
 httpx
 pycryptodome
+slowapi
+redis

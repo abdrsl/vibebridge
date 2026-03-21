@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Query
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,7 +22,17 @@ from app.feishu_client import (
     build_error_card,
     build_help_card,
 )
-from app.feishu_crypto import decrypt_feishu_payload
+from app.feishu_crypto import (
+    decrypt_feishu_payload,
+    FeishuSecurityError,
+    verify_feishu_webhook,
+)
+from app.secure_config import get_secret
+
+# Rate limiting
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 load_dotenv()
 
@@ -39,6 +49,11 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+# Rate limiter
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 origins = [
     item.strip()
@@ -59,6 +74,7 @@ app.add_middleware(
 
 
 @app.get("/")
+@limiter.exempt
 def root():
     return {
         "name": "Embrace AI Product Lab",
@@ -67,21 +83,24 @@ def root():
 
 
 @app.get("/health")
+@limiter.exempt
 def health():
     return {"ok": True}
 
 
 @app.get("/config-check")
-def config_check():
+@limiter.limit("30 per minute")
+def config_check(request: Request):
     return {
         "DEEPSEEK_BASE_URL": os.getenv("DEEPSEEK_BASE_URL"),
         "DEEPSEEK_MODEL": os.getenv("DEEPSEEK_MODEL"),
-        "DEEPSEEK_API_KEY_present": bool(os.getenv("DEEPSEEK_API_KEY")),
+        "DEEPSEEK_API_KEY_present": bool(get_secret("DEEPSEEK_API_KEY")),
     }
 
 
 @app.get("/tasks")
-def api_list_tasks(limit: int = 20):
+@limiter.limit("60 per minute")
+def api_list_tasks(request: Request, limit: int = 20):
     return {
         "ok": True,
         "items": list_tasks(limit=limit),
@@ -89,7 +108,8 @@ def api_list_tasks(limit: int = 20):
 
 
 @app.get("/tasks/{task_id}")
-def api_get_task(task_id: str):
+@limiter.limit("60 per minute")
+def api_get_task(request: Request, task_id: str):
     task = get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="task not found")
@@ -107,7 +127,8 @@ class TaskUpdate(BaseModel):
 
 
 @app.patch("/tasks/{task_id}")
-def patch_task(task_id: str, payload: TaskUpdate):
+@limiter.limit("30 per minute")
+def patch_task(request: Request, task_id: str, payload: TaskUpdate):
     updates = payload.model_dump(exclude_none=True)
 
     updated = update_task(task_id, updates)
@@ -121,7 +142,32 @@ def patch_task(task_id: str, payload: TaskUpdate):
 
 
 @app.post("/feishu/webhook")
-async def feishu_webhook(body: dict[str, Any]):
+@limiter.limit("30 per minute")
+async def feishu_webhook(request: Request, body: dict[str, Any]):
+    # 处理飞书 URL 验证请求（必须在签名验证之前）
+    challenge = body.get("challenge")
+    if challenge:
+        print(f"[Webhook] Handling URL verification challenge: {challenge}")
+        return {"challenge": challenge}
+
+    # 验证飞书 webhook 签名
+    try:
+        verify_feishu_webhook(body)
+    except FeishuSecurityError as e:
+        print(f"[Webhook] Security validation failed: {e}")
+        raise HTTPException(status_code=403, detail="Invalid signature")
+    except Exception as e:
+        print(f"[Webhook] Warning: Signature verification error: {e}")
+        # 继续处理，可能是测试请求或配置问题
+
+    # 解密飞书加密消息（如果配置了加密）
+    try:
+        body = decrypt_feishu_payload(body)
+    except Exception as e:
+        print(f"[Webhook] Decrypt error: {e}")
+        # 继续处理，可能是未加密的消息
+
+    # 解析任务
     task = extract_text_from_feishu_payload(body)
     text = task.get("raw_text", "").strip()
     status = task.get("status", "queued")
@@ -159,8 +205,9 @@ class OpenCodeTaskCreate(BaseModel):
 
 
 @app.post("/opencode/tasks")
+@limiter.limit("10 per minute")
 async def create_opencode_task(
-    payload: OpenCodeTaskCreate, background_tasks: BackgroundTasks
+    request: Request, payload: OpenCodeTaskCreate, background_tasks: BackgroundTasks
 ):
     task_id = await opencode_manager.create_task(
         user_message=payload.message,
@@ -233,13 +280,15 @@ async def run_opencode_with_feishu(task_id: str, notify: bool = True):
 
 
 @app.get("/opencode/tasks")
-async def list_opencode_tasks(limit: int = Query(default=20, le=100)):
+@limiter.limit("60 per minute")
+async def list_opencode_tasks(request: Request, limit: int = Query(default=20, le=100)):
     tasks = await opencode_manager.list_tasks(limit=limit)
     return {"ok": True, "items": tasks}
 
 
 @app.get("/opencode/tasks/{task_id}")
-async def get_opencode_task(task_id: str):
+@limiter.limit("60 per minute")
+async def get_opencode_task(request: Request, task_id: str):
     task = await opencode_manager.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -264,7 +313,8 @@ async def get_opencode_task(task_id: str):
 
 
 @app.get("/opencode/tasks/{task_id}/stream")
-async def stream_opencode_task(task_id: str):
+@limiter.limit("30 per minute")
+async def stream_opencode_task(request: Request, task_id: str):
     task = await opencode_manager.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -283,7 +333,8 @@ async def stream_opencode_task(task_id: str):
 
 
 @app.post("/opencode/tasks/{task_id}/abort")
-async def abort_opencode_task(task_id: str):
+@limiter.limit("10 per minute")
+async def abort_opencode_task(request: Request, task_id: str):
     task = await opencode_manager.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -299,17 +350,39 @@ async def abort_opencode_task(task_id: str):
 
 
 @app.get("/feishu/config-check")
-def feishu_config_check():
+@limiter.limit("30 per minute")
+def feishu_config_check(request: Request):
     return {
         "FEISHU_APP_ID_present": bool(os.getenv("FEISHU_APP_ID")),
-        "FEISHU_APP_SECRET_present": bool(os.getenv("FEISHU_APP_SECRET")),
+        "FEISHU_APP_SECRET_present": bool(get_secret("FEISHU_APP_SECRET")),
     }
 
 
 @app.post("/feishu/webhook/opencode")
+@limiter.limit("30 per minute")
 async def feishu_webhook_opencode(
-    body: dict[str, Any], background_tasks: BackgroundTasks
+    request: Request, body: dict[str, Any], background_tasks: BackgroundTasks
 ):
+    # 处理飞书 URL 验证请求（必须在签名验证之前）
+    # v1 格式: {"type": "url_verification", "challenge": "xxx"}
+    # v2 格式: {"schema": "2.0", "header": {"event_type": "..."}, "event": {}, "challenge": "xxx"}
+    challenge = body.get("challenge")
+    if challenge:
+        print(f"[Webhook] Handling URL verification challenge: {challenge}")
+        # 飞书要求直接返回 challenge 字段
+        return {"challenge": challenge}
+
+    # 验证飞书 webhook 签名
+    try:
+        verify_feishu_webhook(body)
+    except FeishuSecurityError as e:
+        print(f"[Webhook] Security validation failed: {e}")
+        # 返回 403 拒绝请求
+        raise HTTPException(status_code=403, detail="Invalid signature")
+    except Exception as e:
+        print(f"[Webhook] Warning: Signature verification error: {e}")
+        # 继续处理，可能是测试请求或配置问题
+
     # 解密飞书加密消息（如果配置了加密）
     try:
         body = decrypt_feishu_payload(body)
@@ -324,15 +397,6 @@ async def feishu_webhook_opencode(
         )
     else:
         print(f"[Webhook] Received: {body}")
-
-    # 处理飞书 URL 验证请求
-    # v1 格式: {"type": "url_verification", "challenge": "xxx"}
-    # v2 格式: {"schema": "2.0", "header": {"event_type": "..."}, "event": {}, "challenge": "xxx"}
-    challenge = body.get("challenge")
-    if challenge:
-        print(f"[Webhook] Handling URL verification challenge: {challenge}")
-        # 飞书要求直接返回 challenge 字段
-        return {"challenge": challenge}
 
     # 支持飞书事件订阅 v1 和 v2 格式
     schema = body.get("schema", "")

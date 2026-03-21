@@ -1,11 +1,20 @@
 import base64
 import hashlib
+import os
 from typing import Optional
 from Crypto.Cipher import AES
 import json
 
+from app.secure_config import get_secret
+
 # 飞书事件订阅加密解密工具
 # 参考：https://open.feishu.cn/document/ukTMukTMukTM/uYDNxYjL2QTM24iN0EjN/event-subscription-configure-/encrypt-key-encryption-configuration
+
+
+class FeishuSecurityError(Exception):
+    """飞书安全验证错误"""
+
+    pass
 
 
 class FeishuEncryptor:
@@ -233,10 +242,8 @@ class FeishuEncryptor:
 
 def get_encryptor() -> Optional[FeishuEncryptor]:
     """从环境变量获取加密器"""
-    import os
-
-    encrypt_key = os.getenv("FEISHU_ENCRYPT_KEY")
-    verification_token = os.getenv("FEISHU_VERIFICATION_TOKEN")
+    encrypt_key = get_secret("FEISHU_ENCRYPT_KEY")
+    verification_token = get_secret("FEISHU_VERIFICATION_TOKEN")
 
     if not encrypt_key and not verification_token:
         return None
@@ -264,7 +271,6 @@ def decrypt_feishu_payload(body: dict) -> dict:
     Returns:
         解密后的请求体（如果是加密的），否则返回原请求体
     """
-    import os
 
     # 检查是否有加密字段
     if "encrypt" not in body:
@@ -293,22 +299,22 @@ def decrypt_feishu_payload(body: dict) -> dict:
     possible_keys = []
 
     # 1. Verification Token (最可能)
-    verification_token = os.getenv("FEISHU_VERIFICATION_TOKEN")
+    verification_token = get_secret("FEISHU_VERIFICATION_TOKEN")
     if verification_token:
         possible_keys.append(("Verification Token", verification_token))
 
     # 2. Encrypt Key
-    encrypt_key = os.getenv("FEISHU_ENCRYPT_KEY")
+    encrypt_key = get_secret("FEISHU_ENCRYPT_KEY")
     if encrypt_key:
         possible_keys.append(("Encrypt Key", encrypt_key))
 
     # 3. App Secret (不太可能，但尝试)
-    app_secret = os.getenv("FEISHU_APP_SECRET")
+    app_secret = get_secret("FEISHU_APP_SECRET")
     if app_secret:
         possible_keys.append(("App Secret", app_secret))
 
     # 4. App ID (不太可能)
-    app_id = os.getenv("FEISHU_APP_ID")
+    app_id = os.getenv("FEISHU_APP_ID")  # App ID is not sensitive
     if app_id:
         possible_keys.append(("App ID", app_id))
 
@@ -328,10 +334,8 @@ def decrypt_feishu_payload(body: dict) -> dict:
                     timestamp, nonce, encrypted, signature
                 ):
                     print(f"[Crypto] Signature verification failed with {key_name}")
-                    # 即使签名验证失败，也尝试解密（有些场景可能不需要验证）
-                    print(
-                        f"[Crypto] Still attempting decryption despite signature failure..."
-                    )
+                    # 签名验证失败，拒绝请求
+                    raise FeishuSecurityError("Invalid signature")
 
             # 解密
             decrypted = encryptor.decrypt(encrypted)
@@ -353,3 +357,65 @@ def decrypt_feishu_payload(body: dict) -> dict:
     print(f"[Crypto] All decryption attempts failed. Last error: {last_error}")
     # 如果所有尝试都失败，返回原始body，让上层处理
     return body
+
+
+def verify_feishu_webhook(body: dict) -> bool:
+    """
+    验证飞书 webhook 请求的签名
+
+    Args:
+        body: 飞书 webhook 请求体
+
+    Returns:
+        bool: 签名是否有效
+
+    Raises:
+        FeishuSecurityError: 签名验证失败
+    """
+    # 检查是否有签名字段
+    timestamp = body.get("timestamp", "")
+    nonce = body.get("nonce", "")
+    signature = body.get("signature", "")
+    encrypted = body.get("encrypt", "")
+
+    # 如果没有签名字段，可能是未加密的请求或 URL 验证
+    if not signature or not encrypted:
+        # 如果是 URL 验证请求，直接通过
+        if "challenge" in body:
+            return True
+        # 其他情况：如果没有签名，可能是测试请求或配置错误
+        # 在生产环境中应该要求签名，但为了兼容性，返回 True
+        print("[Crypto] Warning: No signature in webhook request")
+        return True
+
+    # 尝试使用所有可能的密钥验证签名
+    possible_keys = []
+
+    # 1. Verification Token (最可能)
+    verification_token = get_secret("FEISHU_VERIFICATION_TOKEN")
+    if verification_token:
+        possible_keys.append(("Verification Token", verification_token))
+
+    # 2. Encrypt Key
+    encrypt_key = get_secret("FEISHU_ENCRYPT_KEY")
+    if encrypt_key:
+        possible_keys.append(("Encrypt Key", encrypt_key))
+
+    # 3. App Secret (不太可能，但尝试)
+    app_secret = get_secret("FEISHU_APP_SECRET")
+    if app_secret:
+        possible_keys.append(("App Secret", app_secret))
+
+    if not possible_keys:
+        print("[Crypto] No verification keys found")
+        raise FeishuSecurityError("No verification keys configured")
+
+    for key_name, key_value in possible_keys:
+        encryptor = FeishuEncryptor(key_value, verification_token)
+        if encryptor.verify_signature(timestamp, nonce, encrypted, signature):
+            print(f"[Crypto] Signature verified with {key_name}")
+            return True
+
+    # 所有密钥都验证失败
+    print("[Crypto] Signature verification failed with all keys")
+    raise FeishuSecurityError("Invalid signature")

@@ -2,12 +2,13 @@ import os
 
 from dotenv import load_dotenv
 from openai import OpenAI
+from app.secure_config import get_secret
 
 load_dotenv()
 
 
 def ask_deepseek_for_design_advice(user_prompt: str) -> str:
-    api_key = os.getenv("DEEPSEEK_API_KEY", "")
+    api_key = get_secret("DEEPSEEK_API_KEY", "")
     base_url = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
     model = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
 

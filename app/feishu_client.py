@@ -5,6 +5,7 @@ from typing import Any
 
 import httpx
 from dotenv import load_dotenv
+from app.secure_config import get_secret
 
 load_dotenv()
 
@@ -12,7 +13,7 @@ load_dotenv()
 class FeishuClient:
     def __init__(self):
         self.app_id = os.getenv("FEISHU_APP_ID", "")
-        self.app_secret = os.getenv("FEISHU_APP_SECRET", "")
+        self.app_secret = get_secret("FEISHU_APP_SECRET", "")
         self.default_chat_id = os.getenv("FEISHU_DEFAULT_CHAT_ID", "")
         self.api_base = "https://open.feishu.cn/open-apis"
         self._tenant_access_token: str | None = None
