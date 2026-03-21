@@ -7,9 +7,22 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional
 
 import httpx
+
+# Optional skill integration
+try:
+    from skills.skill_manager import get_skill_manager
+
+    SKILLS_AVAILABLE = True
+except ImportError:
+    SKILLS_AVAILABLE = False
+
+    # Create a dummy function that raises ImportError when called
+    def get_skill_manager():  # type: ignore
+        raise ImportError("Skills module not available")
+
 
 PROJECT_ROOT = Path(__file__).parent.parent
 
@@ -47,13 +60,46 @@ class OpenCodeManager:
         user_message: str,
         feishu_chat_id: str | None = None,
         feishu_message_id: str | None = None,
+        check_constitution: bool = True,
+        generate_session_name: bool = True,
     ) -> str:
         task_id = (
             f"oc_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
         )
+
+        session_id = None
+
+        # Apply skills if available and requested
+        if SKILLS_AVAILABLE and (check_constitution or generate_session_name):
+            try:
+                skill_manager = get_skill_manager()
+
+                # Check constitution if requested
+                if check_constitution:
+                    constitution_result = skill_manager.check_constitution(user_message)
+                    if constitution_result.get("has_violations", False):
+                        # Log violation but don't block (for now)
+                        print(
+                            f"[Security] Constitutional violation detected in task {task_id}"
+                        )
+                        for violation in constitution_result.get("violations", []):
+                            print(
+                                f"  - {violation.get('message', 'Unknown violation')}"
+                            )
+
+                # Generate session name if requested
+                if generate_session_name:
+                    session_id = skill_manager.generate_session_name(user_message)
+                    print(f"[Skills] Generated session name: {session_id}")
+
+            except Exception as e:
+                print(f"[Skills] Error applying skills: {e}")
+                # Continue without skills if they fail
+
         task = OpenCodeTask(
             task_id=task_id,
             user_message=user_message,
+            session_id=session_id,
             feishu_chat_id=feishu_chat_id,
             feishu_message_id=feishu_message_id,
         )
