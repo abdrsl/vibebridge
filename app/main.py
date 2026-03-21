@@ -245,33 +245,40 @@ async def run_opencode_with_feishu(task_id: str, notify: bool = True):
             )
             print(f"[OpenCode] Start card result: {result}")
 
-        tool_count = 0
+        # 只收集事件，不实时发送
+        final_result = None
+        error_result = None
+
         async for event in opencode_manager.run_opencode(task_id):
             event_type = event.get("type", "")
             content = event.get("content", "")
             print(f"[OpenCode] Event: {event_type} - {content[:50]}...")
 
-            if notify and task.feishu_chat_id:
-                if event_type == "tool":
-                    tool_count += 1
+            if event_type == "done":
+                final_result = content
+            elif event_type == "error":
+                error_result = content
 
-                if event_type == "status":
-                    card = build_progress_card(
-                        task_id, task.status.value, content, tool_count
-                    )
-                    await feishu_client.send_interactive_card(task.feishu_chat_id, card)
+        # 任务完成后发送结果
+        if notify and task.feishu_chat_id:
+            print(f"[OpenCode] Sending result to Feishu, final_result={final_result is not None}, error_result={error_result is not None}")
+            if final_result:
+                print(f"[OpenCode] Building result card with content length: {len(final_result)}")
+                final_card = build_result_card(
+                    task_id, task.user_message, task.output_lines, final_result
+                )
+                result = await feishu_client.send_interactive_card(
+                    task.feishu_chat_id, final_card
+                )
+                print(f"[OpenCode] Result card sent: {result}")
+            elif error_result:
+                print(f"[OpenCode] Building error card with error: {error_result}")
+                card = build_error_card(task_id, error_result)
+                result = await feishu_client.send_interactive_card(task.feishu_chat_id, card)
+                print(f"[OpenCode] Error card sent: {result}")
+            else:
+                print(f"[OpenCode] No result or error to send")
 
-                elif event_type == "error":
-                    card = build_error_card(task_id, content)
-                    await feishu_client.send_interactive_card(task.feishu_chat_id, card)
-
-                elif event_type == "done":
-                    final_card = build_result_card(
-                        task_id, task.user_message, task.output_lines, content
-                    )
-                    await feishu_client.send_interactive_card(
-                        task.feishu_chat_id, final_card
-                    )
     except Exception as e:
         print(f"[OpenCode] Error: {e}")
         import traceback

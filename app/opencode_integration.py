@@ -12,16 +12,34 @@ from typing import AsyncGenerator, Optional
 import httpx
 
 # Optional skill integration
+SKILLS_AVAILABLE = False
+get_skill_manager = None
+OPENCODE_SKILLS_AVAILABLE = False
+get_opencode_skill_manager = None
+
+# Try to load OpenCode-style skills from workspace/.skills/
 try:
-    from skills.skill_manager import get_skill_manager
+    from .opencode_skill_manager import (
+        get_opencode_skill_manager as _get_opencode_skill_manager,
+    )
 
+    get_opencode_skill_manager = _get_opencode_skill_manager
+    OPENCODE_SKILLS_AVAILABLE = True
     SKILLS_AVAILABLE = True
-except ImportError:
-    SKILLS_AVAILABLE = False
+    print("[Skills] OpenCode skill manager loaded")
+except ImportError as e:
+    print(f"[Skills] OpenCode skill manager not available: {e}")
 
-    # Create a dummy function that raises ImportError when called
-    def get_skill_manager():  # type: ignore
-        raise ImportError("Skills module not available")
+# Fallback to Python skill manager
+if not OPENCODE_SKILLS_AVAILABLE:
+    try:
+        from skills.skill_manager import get_skill_manager as _get_skill_manager
+
+        get_skill_manager = _get_skill_manager
+        SKILLS_AVAILABLE = True
+        print("[Skills] Python skill manager loaded (fallback)")
+    except ImportError:
+        print("[Skills] No skill managers available")
 
 
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -72,25 +90,41 @@ class OpenCodeManager:
         # Apply skills if available and requested
         if SKILLS_AVAILABLE and (check_constitution or generate_session_name):
             try:
-                skill_manager = get_skill_manager()
+                # Try OpenCode skill manager first if available
+                if OPENCODE_SKILLS_AVAILABLE and get_opencode_skill_manager:
+                    skill_manager = get_opencode_skill_manager()
+                    manager_type = "OpenCode"
+                elif get_skill_manager:
+                    skill_manager = get_skill_manager()
+                    manager_type = "Python"
+                else:
+                    skill_manager = None
+                    manager_type = None
 
-                # Check constitution if requested
-                if check_constitution:
-                    constitution_result = skill_manager.check_constitution(user_message)
-                    if constitution_result.get("has_violations", False):
-                        # Log violation but don't block (for now)
-                        print(
-                            f"[Security] Constitutional violation detected in task {task_id}"
+                if skill_manager:
+                    print(f"[Skills] Using {manager_type} skill manager")
+
+                    # Check constitution if requested
+                    if check_constitution:
+                        constitution_result = skill_manager.check_constitution(
+                            user_message
                         )
-                        for violation in constitution_result.get("violations", []):
+                        if constitution_result.get("has_violations", False):
+                            # Log violation but don't block (for now)
                             print(
-                                f"  - {violation.get('message', 'Unknown violation')}"
+                                f"[Security] Constitutional violation detected in task {task_id}"
                             )
+                            for violation in constitution_result.get("violations", []):
+                                print(
+                                    f"  - {violation.get('message', 'Unknown violation')}"
+                                )
 
-                # Generate session name if requested
-                if generate_session_name:
-                    session_id = skill_manager.generate_session_name(user_message)
-                    print(f"[Skills] Generated session name: {session_id}")
+                    # Generate session name if requested
+                    if generate_session_name:
+                        session_id = skill_manager.generate_session_name(user_message)
+                        print(f"[Skills] Generated session name: {session_id}")
+                else:
+                    print("[Skills] No skill manager available")
 
             except Exception as e:
                 print(f"[Skills] Error applying skills: {e}")
@@ -160,6 +194,9 @@ class OpenCodeManager:
 
             buffer = ""
             stdout = process.stdout
+            final_result = None
+            has_error = False
+
             while True:
                 try:
                     assert stdout is not None
@@ -179,14 +216,7 @@ class OpenCodeManager:
                             event = json.loads(line)
                             event_type = event.get("type", "")
 
-                            if event_type == "step_start":
-                                snapshot = event.get("snapshot", "")[:50]
-                                yield {
-                                    "type": "status",
-                                    "content": f"🔄 开始执行步骤...",
-                                }
-
-                            elif event_type == "tool_use":
+                            if event_type == "tool_use":
                                 part = event.get("part", {})
                                 state = part.get("state", {})
                                 tool = state.get("title", part.get("tool", "unknown"))
@@ -201,33 +231,18 @@ class OpenCodeManager:
                                 else:
                                     display = f"🛠️ {tool}: {str(input_data)[:100]}"
                                 task.output_lines.append(display)
-                                yield {
-                                    "type": "tool",
-                                    "content": display,
-                                    "detail": state,
-                                }
 
                             elif event_type == "text":
                                 part = event.get("part", {})
                                 text = part.get("text", "")
                                 if text:
                                     task.output_lines.append(text)
-                                    yield {"type": "output", "content": text}
-
-                            elif event_type == "step_finish":
-                                reason = event.get("part", {}).get("reason", "")
-                                tokens = event.get("part", {}).get("tokens", {})
-                                cost = event.get("part", {}).get("cost", 0)
-                                yield {
-                                    "type": "status",
-                                    "content": f"✅ 步骤完成 ({reason})",
-                                }
 
                             elif event_type == "error":
-                                yield {
-                                    "type": "error",
-                                    "content": event.get("message", "Unknown error"),
-                                }
+                                error_msg = event.get("message", "Unknown error")
+                                has_error = True
+                                task.error = error_msg
+                                yield {"type": "error", "content": error_msg}
 
                             elif event_type == "done":
                                 final_content = event.get("content", {})
@@ -237,16 +252,8 @@ class OpenCodeManager:
                                     )
                                 else:
                                     final_text = str(final_content)
+                                final_result = final_text
                                 task.final_result = final_text
-                                yield {"type": "done", "content": final_text}
-
-                            else:
-                                part = event.get("part", {})
-                                if part:
-                                    text = part.get("text", "")
-                                    if text:
-                                        task.output_lines.append(text)
-                                        yield {"type": "output", "content": text}
 
                         except json.JSONDecodeError:
                             pass
@@ -258,18 +265,37 @@ class OpenCodeManager:
             await process.wait()
 
             if process.returncode == 0:
-                await self.update_task(task_id, status=TaskStatus.COMPLETED)
-                yield {"type": "status", "content": "任务完成", "task_id": task_id}
+                if final_result and not has_error:
+                    await self.update_task(task_id, status=TaskStatus.COMPLETED)
+                    yield {"type": "done", "content": final_result}
+                else:
+                    # 如果没有收到done事件但有输出，使用输出作为结果
+                    if task.output_lines and not has_error:
+                        final_result = "\n".join(task.output_lines[-20:])  # 取最后20行
+                        task.final_result = final_result
+                        await self.update_task(task_id, status=TaskStatus.COMPLETED)
+                        yield {"type": "done", "content": final_result}
+                    else:
+                        error_msg = (
+                            task.error
+                            or f"OpenCode exited with code {process.returncode}"
+                        )
+                        await self.update_task(
+                            task_id,
+                            status=TaskStatus.FAILED,
+                            error=error_msg,
+                        )
+                        yield {"type": "error", "content": error_msg}
             else:
+                error_msg = (
+                    task.error or f"OpenCode exited with code {process.returncode}"
+                )
                 await self.update_task(
                     task_id,
                     status=TaskStatus.FAILED,
-                    error=f"OpenCode exited with code {process.returncode}",
+                    error=error_msg,
                 )
-                yield {
-                    "type": "error",
-                    "content": f"任务失败，退出码: {process.returncode}",
-                }
+                yield {"type": "error", "content": error_msg}
 
         except FileNotFoundError:
             error_msg = "OpenCode CLI 未找到，请确保已安装 opencode"
