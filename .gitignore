@@ -1,21 +1,74 @@
+# Python
 .venv/
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.Python
+pytest_cache/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-.DS_Store
+
+# Environment
 .env
 .env.*
 !.env.example
-node_modules/
-playwright-report/
-test-results/
-*.swp
-*.swo
+
+# IDE
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
 
-# Local data
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Playwright
+playwright-report/
+test-results/
+
+# Local data and logs
 data/tasks/*.json
+data/*.txt
 !data/tasks/.gitkeep
+logs/
+*.log
+
+# Debug and test files
+debug_encryption.py
+test_*.txt
+log_test.txt
+api_test.txt
+deepseek_test.txt
+test_final.txt
+
+# Temporary documentation
+TEST_SUMMARY.md
+TEST_V2_SUMMARY.md
+test_opencode_v2.md
+
+# Aider
+.aider*
+
+# Infra (contains local config)
+infra/.env
+infra/data/
+
+# Other temporary files
+simple_demo.py
+start_ngrok.sh
+.RADME.md.swp
