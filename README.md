@@ -28,6 +28,7 @@ flowchart TD
 - **💾 任务存储**: JSON 文件存储任务状态和历史记录
 - **🔒 加密支持**: 支持飞书 AES-256-CBC 加密消息（可选）
 - **🎨 交互式卡片**: 使用飞书交互式卡片展示任务进度和结果
+- **🧠 AI 技能系统**: OpenCode/Claude 风格技能，支持宪法检查、会话命名等
 
 ## 📁 项目结构
 
@@ -36,11 +37,39 @@ ai-project/
 ├── app/                           # 核心应用代码
 │   ├── main.py                    # FastAPI 入口点，路由注册
 │   ├── opencode_integration.py    # OpenCode CLI 执行和任务生命周期管理
+│   ├── opencode_skill_manager.py  # OpenCode/Claude 风格技能管理器
 │   ├── feishu_client.py           # 飞书 API 客户端，消息和卡片发送
 │   ├── feishu_crypto.py           # 飞书事件订阅加密/解密工具
 │   ├── task_store.py              # JSON 文件基础的任务存储
 │   ├── task_parser.py             # 飞书 webhook 负载解析
-│   └── llm.py                     # 直接 LLM API 调用（DeepSeek）
+│   ├── llm.py                     # 直接 LLM API 调用（DeepSeek）
+│   ├── temp_file_manager.py       # 临时文件管理
+│   ├── file_sender.py             # 文件发送工具
+│   ├── simple_skill_manager.py    # 简单技能管理器（旧版）
+│   ├── session_manager.py         # 会话管理
+│   └── secure_config.py           # 安全配置（环境变量加密）
+├── skills/                        # Python 技能模块（旧版）
+│   ├── constitution.py            # 宪法 AI 规则
+│   ├── session_naming.py          # 会话命名
+│   ├── skill_manager.py           # 技能管理器（旧版）
+│   └── github_skills.py           # GitHub 技能下载器
+├── workspace/.skills/             # OpenCode 风格技能目录（工作区级）
+│   ├── analyze-python-project/    # Python 项目分析技能
+│   │   ├── SKILLS.md              # 技能文档
+│   │   ├── run.sh                 # 执行脚本
+│   │   └── analyze.py             # 分析逻辑
+│   ├── review-python-code/        # Python 代码审查技能
+│   │   ├── SKILLS.md              # 技能文档
+│   │   ├── run.sh                 # 执行脚本
+│   │   └── review.py              # 审查逻辑
+│   ├── constitution-check/        # 宪法检查技能
+│   │   ├── SKILLS.md              # 技能文档
+│   │   ├── run.sh                 # 执行脚本
+│   │   └── check.py               # 检查逻辑
+│   └── session-naming/            # 会话命名技能
+│       ├── SKILLS.md              # 技能文档
+│       ├── run.sh                 # 执行脚本
+│       └── generate.py            # 生成逻辑
 ├── data/                          # 数据存储
 │   └── tasks/                     # 任务 JSON 文件存储目录
 │       └── .gitkeep               # 保持目录的 Git 占位符
@@ -52,7 +81,15 @@ ai-project/
 ├── infra/                         # 基础设施配置
 │   └── docker-compose.yml         # Docker Compose 配置（可选）
 ├── docs/                          # 文档目录
+│   └── FIXED_URL_SOLUTIONS.md     # 固定 URL 解决方案指南
+├── examples/                      # 示例文件目录
+│   ├── example_opencode_file_send.py  # OpenCode 文件发送示例
+│   ├── send_existing_html.py      # 发送现有HTML文件示例
+│   └── personal_website.html      # 示例HTML文件
 ├── scripts/                       # 工具脚本目录
+│   └── start_system.sh            # 系统启动/停止脚本
+├── logs/                          # 日志目录
+├── tmp/                           # 临时文件目录
 ├── .env.example                   # 环境变量示例
 ├── .gitignore                     # Git 忽略规则
 ├── requirements.txt               # Python 依赖
@@ -66,11 +103,15 @@ ai-project/
 |------|----------|-------------|
 | `app/main.py` | FastAPI 应用入口，注册所有路由 | `feishu_webhook_opencode()` - 处理飞书 webhook |
 | `app/opencode_integration.py` | OpenCode 任务管理 | `OpenCodeManager` - 任务管理类<br/>`OpenCodeTask` - 任务数据类 |
+| `app/opencode_skill_manager.py` | OpenCode 风格技能管理 | `OpenCodeSkillManager` - 技能管理器<br/>`OpenCodeSkill` - 技能数据类 |
 | `app/feishu_client.py` | 飞书 API 客户端 | `FeishuClient` - API 客户端类<br/>`build_*_card()` - 卡片构建函数 |
 | `app/feishu_crypto.py` | 飞书加密/解密 | `FeishuEncryptor` - 加解密类<br/>`decrypt_feishu_payload()` - 负载解密函数 |
 | `app/task_store.py` | 任务持久化存储 | `save_task()`, `list_tasks()`, `get_task()`, `update_task()` |
 | `app/task_parser.py` | 消息解析 | `extract_text_from_feishu_payload()` - 提取消息文本 |
 | `app/llm.py` | LLM 接口 | `ask_deepseek_for_design_advice()` - DeepSeek API 调用 |
+| `app/secure_config.py` | 安全配置管理 | `SecureConfig` - 加密配置类<br/>`encrypt_env_file()` - 环境变量加密 |
+| `app/temp_file_manager.py` | 临时文件管理 | `TempFileManager` - 临时文件管理类 |
+| `app/file_sender.py` | 文件发送工具 | `send_file_to_feishu()` - 文件发送函数 |
 
 ## 🔧 环境变量配置
 

@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator, Optional, List
 
 import httpx
 
@@ -41,6 +41,21 @@ if not OPENCODE_SKILLS_AVAILABLE:
     except ImportError:
         print("[Skills] No skill managers available")
 
+# Fallback to simple skill manager
+if not SKILLS_AVAILABLE:
+    try:
+        from .simple_skill_manager import (
+            get_simple_skill_manager as _get_simple_skill_manager,
+            check_constitution as _check_constitution,
+            generate_session_name as _generate_session_name,
+        )
+
+        get_simple_skill_manager = _get_simple_skill_manager
+        SKILLS_AVAILABLE = True
+        print("[Skills] Simple skill manager loaded (fallback)")
+    except ImportError as e:
+        print(f"[Skills] Simple skill manager not available: {e}")
+
 
 PROJECT_ROOT = Path(__file__).parent.parent
 
@@ -66,6 +81,7 @@ class OpenCodeTask:
     updated_at: datetime = field(default_factory=datetime.now)
     feishu_chat_id: str | None = None
     feishu_message_id: str | None = None
+    generated_files: List[str] = field(default_factory=list)  # 生成的文件路径列表
 
 
 class OpenCodeManager:
@@ -97,6 +113,9 @@ class OpenCodeManager:
                 elif get_skill_manager:
                     skill_manager = get_skill_manager()
                     manager_type = "Python"
+                elif get_simple_skill_manager:
+                    skill_manager = get_simple_skill_manager()
+                    manager_type = "Simple"
                 else:
                     skill_manager = None
                     manager_type = None

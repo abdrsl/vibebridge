@@ -28,6 +28,8 @@ from app.feishu_crypto import (
     verify_feishu_webhook,
 )
 from app.secure_config import get_secret
+from app.feishu_webhook_handler import handle_feishu_webhook
+from app.feishu_card_handler import process_feishu_webhook
 
 # Rate limiting
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -261,9 +263,13 @@ async def run_opencode_with_feishu(task_id: str, notify: bool = True):
 
         # 任务完成后发送结果
         if notify and task.feishu_chat_id:
-            print(f"[OpenCode] Sending result to Feishu, final_result={final_result is not None}, error_result={error_result is not None}")
+            print(
+                f"[OpenCode] Sending result to Feishu, final_result={final_result is not None}, error_result={error_result is not None}"
+            )
             if final_result:
-                print(f"[OpenCode] Building result card with content length: {len(final_result)}")
+                print(
+                    f"[OpenCode] Building result card with content length: {len(final_result)}"
+                )
                 final_card = build_result_card(
                     task_id, task.user_message, task.output_lines, final_result
                 )
@@ -274,7 +280,9 @@ async def run_opencode_with_feishu(task_id: str, notify: bool = True):
             elif error_result:
                 print(f"[OpenCode] Building error card with error: {error_result}")
                 card = build_error_card(task_id, error_result)
-                result = await feishu_client.send_interactive_card(task.feishu_chat_id, card)
+                result = await feishu_client.send_interactive_card(
+                    task.feishu_chat_id, card
+                )
                 print(f"[OpenCode] Error card sent: {result}")
             else:
                 print(f"[OpenCode] No result or error to send")
@@ -405,67 +413,5 @@ async def feishu_webhook_opencode(
     else:
         print(f"[Webhook] Received: {body}")
 
-    # 支持飞书事件订阅 v1 和 v2 格式
-    schema = body.get("schema", "")
-    event = {}
-    event_type = ""
-
-    if schema == "2.0":
-        # v2 格式: {"schema":"2.0","header":{...},"event":{...}}
-        header = body.get("header", {})
-        event_type = header.get("event_type", "")
-        event = body.get("event", {})
-    else:
-        # v1 格式: {"event":{...}} 或简化格式 {"event_type":...,"event":...}
-        event = body.get("event", {})
-        event_type = body.get("event_type", "")
-
-    if event_type == "im.message.receive_v1":
-        message = event.get("message", {})
-        sender = event.get("sender", {})
-        content_str = message.get("content", "{}")
-
-        try:
-            content_obj = json.loads(content_str)
-        except json.JSONDecodeError:
-            content_obj = {}
-
-        text = content_obj.get("text", "").strip()
-        chat_id = message.get("chat_id", "")
-        sender_id = sender.get("sender_id", {}).get("open_id", "unknown")
-
-        if not text:
-            # 在后台发送提示消息，立即返回响应
-            background_tasks.add_task(
-                feishu_client.send_text_message,
-                chat_id,
-                "🤖 请发送你要完成的开发任务，我会帮你处理！",
-            )
-            return {"ok": True, "skipped": True, "reason": "Empty message"}
-
-        if text.lower() in ["help", "帮助", "/help"]:
-            # 在后台发送帮助卡片，立即返回响应
-            help_card = build_help_card()
-            background_tasks.add_task(
-                feishu_client.send_interactive_card, chat_id, help_card
-            )
-            return {"ok": True, "handled": True, "action": "help"}
-
-        task_id = await opencode_manager.create_task(
-            user_message=text,
-            feishu_chat_id=chat_id,
-        )
-
-        background_tasks.add_task(run_opencode_with_feishu, task_id, True)
-
-        return {
-            "ok": True,
-            "task_id": task_id,
-            "status": "pending",
-        }
-
-    return {
-        "ok": True,
-        "skipped": True,
-        "reason": f"Event type {event_type} not handled",
-    }
+    # 使用新的卡片交互处理器
+    return await process_feishu_webhook(body, background_tasks)
