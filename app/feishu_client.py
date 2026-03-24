@@ -8,6 +8,7 @@ from typing import Any, BinaryIO, Optional
 import httpx
 from dotenv import load_dotenv
 from app.secure_config import get_secret
+from app.retry_handler import retry_async
 
 load_dotenv()
 
@@ -20,6 +21,49 @@ class FeishuClient:
         self.api_base = "https://open.feishu.cn/open-apis"
         self._tenant_access_token: str | None = None
         self._token_expires_at: float = 0
+
+    @retry_async(
+        max_retries=3,
+        base_delay=1.0,
+        max_delay=10.0,
+        retryable_exceptions=(
+            httpx.ConnectError,
+            httpx.TimeoutException,
+            httpx.NetworkError,
+            Exception,
+        ),
+    )
+    async def _make_request_with_retry(
+        self,
+        method: str,
+        url: str,
+        headers: dict,
+        payload: Optional[dict] = None,
+        **kwargs,
+    ) -> dict[str, Any]:
+        """带重试的HTTP请求"""
+        async with httpx.AsyncClient() as client:
+            if method.upper() == "POST":
+                resp = await client.post(
+                    url, headers=headers, json=payload, timeout=30.0, **kwargs
+                )
+            elif method.upper() == "GET":
+                resp = await client.get(url, headers=headers, timeout=30.0, **kwargs)
+            else:
+                raise ValueError(f"Unsupported method: {method}")
+
+            result = resp.json()
+
+            # 检查Feishu API错误
+            if result.get("code") != 0:
+                error_msg = result.get("msg", "Unknown error")
+                print(f"[Feishu] API error: {error_msg}")
+                # 某些错误不应该重试
+                if result.get("code") in [200671, 200341]:  # 权限错误
+                    return result
+                raise Exception(f"Feishu API error: {error_msg}")
+
+            return result
 
     async def get_tenant_access_token(self) -> str | None:
         import time

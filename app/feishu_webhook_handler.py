@@ -71,6 +71,17 @@ async def handle_feishu_message(
     sender = event.get("sender", {})
     content_str = message.get("content", "{}")
 
+    # 消息去重检查
+    message_id = message.get("message_id", "")
+    if message_id:
+        from app.message_deduplicator import get_deduplicator
+
+        deduplicator = get_deduplicator()
+
+        if deduplicator.is_duplicate(message_id):
+            print(f"[Webhook] Duplicate message ignored: {message_id}")
+            return {"ok": True, "skipped": True, "reason": "Duplicate message"}
+
     try:
         content_obj = json.loads(content_str)
     except json.JSONDecodeError:
