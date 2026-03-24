@@ -197,8 +197,7 @@ class SessionManager:
                     session.chat_id == chat_id
                     and session.user_id == user_id
                     and not session.is_expired()
-                    and session.status
-                    not in [SessionStatus.COMPLETED, SessionStatus.CANCELLED]
+                    and session.status not in [SessionStatus.CANCELLED]
                 ):
                     session.renew()
                     self._save_session(session)

@@ -499,7 +499,40 @@ async def handle_card_action(
     session = await session_manager.get_session(session_id)
 
     if not session:
-        return {"ok": False, "error": "Session not found", "action": "error"}
+        print(f"[Card] Session {session_id} not found, may be expired or cleaned up")
+        # 会话已过期或丢失，创建新会话并继续
+        # 为了确保Feishu不显示错误，我们返回成功响应
+        # 同时在后台发送消息通知用户
+
+        # 创建新会话
+        new_session = await session_manager.get_or_create_session(chat_id, user_id)
+        if new_session:
+            # 添加一条系统消息说明会话已恢复
+            await session_manager.add_message_to_session(
+                new_session.session_id,
+                "system",
+                f"原会话 {session_id} 已过期，已创建新会话 {new_session.session_id}",
+                original_session_id=session_id,
+            )
+
+            # 在后台发送通知消息
+            background_tasks.add_task(
+                feishu_client.send_text_message,
+                chat_id,
+                f"⚠️ 原任务会话已过期，已创建新会话继续处理。",
+            )
+
+            # 对于确认操作，我们需要知道原始任务内容
+            # 由于无法恢复原始消息，我们只能提示用户重新发送
+            if action == "confirm":
+                background_tasks.add_task(
+                    feishu_client.send_text_message,
+                    chat_id,
+                    f"请重新发送任务内容以继续。",
+                )
+
+        # 无论如何都返回成功响应，避免Feishu显示错误
+        return {"ok": True, "action": "session_recovered", "immediate": True}
 
     # 验证用户权限
     if session.user_id != user_id or session.chat_id != chat_id:
@@ -522,7 +555,8 @@ async def handle_card_action(
                 start_opencode_task_in_background,
                 session,
                 last_user_message,
-                chat_id, background_tasks,
+                chat_id,
+                background_tasks,
             )
 
             # 立即返回成功响应
@@ -559,7 +593,8 @@ async def handle_card_action(
                 start_opencode_task_in_background,
                 session,
                 last_user_message,
-                chat_id, background_tasks,
+                chat_id,
+                background_tasks,
             )
 
             # 立即返回成功响应
@@ -586,13 +621,13 @@ async def handle_card_action(
                     user_message=last_user_message,
                 )
 
-        print(f"[Session] Adding card send task to background")
-        background_tasks.add_task(
-            feishu_client.send_interactive_card,
-            chat_id,
-            confirmation_card,
-        )
-        print(f"[Session] Card send task added")
+                print(f"[Session] Adding card send task to background")
+                background_tasks.add_task(
+                    feishu_client.send_interactive_card,
+                    chat_id,
+                    confirmation_card,
+                )
+                print(f"[Session] Card send task added")
 
         return {"ok": True, "action": "new_session_created"}
 
@@ -607,7 +642,8 @@ async def handle_card_action(
                 start_opencode_task_in_background,
                 session,
                 last_user_message,
-                chat_id, background_tasks,
+                chat_id,
+                background_tasks,
             )
 
             # 立即返回成功响应
@@ -653,7 +689,8 @@ async def handle_card_action(
                 start_opencode_task_in_background,
                 session,
                 last_user_message,
-                chat_id, background_tasks,
+                chat_id,
+                background_tasks,
             )
 
             # 立即返回成功响应

@@ -4,11 +4,13 @@ Tunnel Manager - Manages SSH tunnel to serveo.net and notifies Feishu on URL cha
 """
 
 import asyncio
+import json
 import os
 import re
 import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -38,6 +40,7 @@ class TunnelManager:
         self.current_url: Optional[str] = None
         self.feishu_client = FeishuClient()
         self.running = False
+        self.tunnel_type = os.getenv("TUNNEL_TYPE", "ssh").lower()  # ssh or ngrok
 
         # Ensure log directory exists
         LOG_DIR.mkdir(exist_ok=True)
@@ -72,6 +75,10 @@ class TunnelManager:
             r"https://[a-zA-Z0-9-]+\.serveousercontent\.com",
             r"Forwarding HTTP traffic from (https://[^\s]+)",
             r"https://[a-zA-Z0-9-]+-\d+-\d+-\d+-\d+\.serveousercontent\.com",
+            # ngrok patterns
+            r"https://[a-zA-Z0-9-]+\.ngrok(-free)?\.dev",
+            r"started tunnel.*url=(https://[^\s]+)",
+            r"url=([^\s]+\.ngrok(-free)?\.dev)",
         ]
 
         for pattern in patterns:
@@ -83,6 +90,9 @@ class TunnelManager:
                     url_match = re.search(r"https://[^\s]+", log_line)
                     if url_match:
                         url = url_match.group(0)
+                # For ngrok "url=" format, extract the URL
+                if "url=" in log_line and match.group(1):
+                    url = match.group(1)
                 return url
 
         return None
@@ -229,10 +239,17 @@ class TunnelManager:
             print(f"❌ Error sending notification: {e}")
 
     async def start_tunnel(self):
-        """Start the SSH tunnel to serveo.net."""
+        """Start the tunnel (SSH or ngrok)."""
         # Kill any existing tunnel processes
         self.stop_tunnel()
 
+        if self.tunnel_type == "ngrok":
+            return await self.start_ngrok_tunnel()
+        else:
+            return await self.start_ssh_tunnel()
+
+    async def start_ssh_tunnel(self):
+        """Start the SSH tunnel to serveo.net."""
         print("🚀 Starting SSH tunnel to serveo.net...")
 
         # Build command
@@ -255,7 +272,65 @@ class TunnelManager:
         # Start monitoring
         asyncio.create_task(self.monitor_tunnel_output())
 
-        print("✅ Tunnel process started")
+        print("✅ SSH tunnel process started")
+        return self.tunnel_process
+
+    async def start_ngrok_tunnel(self):
+        """Start ngrok tunnel."""
+        print("🚀 Starting ngrok tunnel...")
+
+        # Check if ngrok is available
+        try:
+            subprocess.run(["ngrok", "--version"], capture_output=True, check=True)
+        except Exception as e:
+            print(f"❌ ngrok not available: {e}")
+            print("🔄 Falling back to SSH tunnel...")
+            return await self.start_ssh_tunnel()
+
+        # Build ngrok command - use 127.0.0.1 to avoid IPv6 issues
+        cmd = [
+            "ngrok",
+            "http",
+            "127.0.0.1:8000",
+            "--log=stdout",
+            "--pooling-enabled",
+            "--inspect=false",
+        ]
+
+        # Start process with pipes
+        self.tunnel_process = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE
+        )
+
+        self.running = True
+
+        # Start monitoring
+        asyncio.create_task(self.monitor_tunnel_output())
+
+        # Wait a moment for ngrok to start
+        await asyncio.sleep(3)
+
+        # Try to get URL from ngrok API with retries
+        ngrok_url = None
+        max_retries = 5
+        for attempt in range(max_retries):
+            ngrok_url = await self.get_ngrok_url()
+            if ngrok_url:
+                break
+            if attempt < max_retries - 1:
+                print(
+                    f"⏳ Waiting for ngrok API (attempt {attempt + 1}/{max_retries})..."
+                )
+                await asyncio.sleep(2)
+
+        if ngrok_url:
+            print(f"✅ ngrok tunnel started: {ngrok_url}")
+            await self.handle_new_url(ngrok_url)
+        else:
+            print(
+                "✅ ngrok tunnel process started (URL not yet available, will monitor logs)"
+            )
+
         return self.tunnel_process
 
     def stop_tunnel(self):
@@ -290,8 +365,34 @@ class TunnelManager:
         except Exception:
             return False
 
+    async def get_ngrok_url(self) -> Optional[str]:
+        """Get ngrok tunnel URL from ngrok API."""
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                # Try to get tunnel info from ngrok API
+                response = await client.get("http://localhost:4040/api/tunnels")
+                if response.status_code == 200:
+                    data = response.json()
+                    tunnels = data.get("tunnels", [])
+                    for tunnel in tunnels:
+                        if tunnel.get("proto") == "https":
+                            public_url = tunnel.get("public_url")
+                            if public_url:
+                                return public_url
+        except Exception as e:
+            print(f"⚠️ Could not get ngrok URL from API: {e}")
+
+        return None
+
     def check_existing_tunnel(self) -> bool:
         """Check if a tunnel process is already running."""
+        if self.tunnel_type == "ngrok":
+            return self.check_ngrok_process()
+        else:
+            return self.check_ssh_process()
+
+    def check_ssh_process(self) -> bool:
+        """Check if SSH tunnel process is running."""
         if PSUTIL_AVAILABLE and psutil:
             for proc in psutil.process_iter(["pid", "name", "cmdline"]):
                 try:
@@ -306,8 +407,6 @@ class TunnelManager:
                     continue
         else:
             # Fallback using pgrep
-            import subprocess
-
             try:
                 result = subprocess.run(
                     ["pgrep", "-f", "ssh.*serveo.net"], capture_output=True, text=True
@@ -315,11 +414,38 @@ class TunnelManager:
                 return result.returncode == 0 and result.stdout.strip() != ""
             except Exception:
                 pass
+        return False
 
+    def check_ngrok_process(self) -> bool:
+        """Check if ngrok process is running."""
+        if PSUTIL_AVAILABLE and psutil:
+            for proc in psutil.process_iter(["pid", "name", "cmdline"]):
+                try:
+                    cmdline = proc.info["cmdline"]
+                    if cmdline and "ngrok" in cmdline and "http" in " ".join(cmdline):
+                        return True
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
+        else:
+            # Fallback using pgrep
+            try:
+                result = subprocess.run(
+                    ["pgrep", "-f", "ngrok.*http"], capture_output=True, text=True
+                )
+                return result.returncode == 0 and result.stdout.strip() != ""
+            except Exception:
+                pass
         return False
 
     async def extract_url_from_log_file(self) -> Optional[str]:
         """Extract URL from existing tunnel log file."""
+        # For ngrok, try to get URL from API first
+        if self.tunnel_type == "ngrok":
+            ngrok_url = await self.get_ngrok_url()
+            if ngrok_url:
+                return ngrok_url
+
+        # Fallback to reading log file
         if not TUNNEL_LOG.exists():
             return None
 
@@ -348,7 +474,7 @@ class TunnelManager:
                 print(f"✅ Last URL is still active: {last_url}")
                 # Still notify current URL
                 await self.notify_url_change(None, last_url)
-        
+
         # Check if tunnel is already running
         existing_tunnel = self.check_existing_tunnel()
         if existing_tunnel:
@@ -363,7 +489,7 @@ class TunnelManager:
                     await self.notify_url_change(last_url, current_url)
             else:
                 print("⚠️ Could not extract URL from logs")
-        
+
         # Start new tunnel if not already running
         if not existing_tunnel:
             print("🚀 No existing tunnel, starting new one...")
@@ -371,12 +497,12 @@ class TunnelManager:
         else:
             print("👂 Monitoring existing tunnel...")
             self.running = True  # Set running flag for monitoring
-        
+
         # Keep running and monitor
         try:
             while self.running:
                 await asyncio.sleep(5)  # Check every 5 seconds
-                
+
                 # Check tunnel health
                 if self.current_url:
                     is_healthy = await self.health_check()
@@ -387,13 +513,15 @@ class TunnelManager:
                             print("❌ Tunnel process dead, restarting...")
                             await self.start_tunnel()
                         else:
-                            print("🔧 Tunnel process alive but URL not responding, may be temporary")
-                
+                            print(
+                                "🔧 Tunnel process alive but URL not responding, may be temporary"
+                            )
+
                 # If we have a tunnel process, check if it died
                 if self.tunnel_process and self.tunnel_process.poll() is not None:
                     print("⚠️ Managed tunnel process died, restarting...")
                     await self.start_tunnel()
-        
+
         except KeyboardInterrupt:
             print("\n🛑 Received interrupt, shutting down...")
         finally:
@@ -408,7 +536,6 @@ async def main():
     def signal_handler(signum, frame):
         print(f"\n📡 Received signal {signum}, shutting down...")
         manager.stop_tunnel()
-        sys.exit(0)
 
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
