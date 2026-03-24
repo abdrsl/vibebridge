@@ -105,6 +105,82 @@ async def handle_feishu_message(
     if text.lower() in ["cancel", "取消", "/cancel"]:
         return await handle_session_cancel(chat_id, sender_id, background_tasks)
 
+    # 检查自定义指令
+    from app.command_processor import get_command_processor
+
+    command_processor = get_command_processor()
+    cmd_config = command_processor.match_command(text)
+
+    if cmd_config:
+        print(f"[Command] Matched custom command: {text}")
+        result = await command_processor.execute_command(
+            cmd_config, chat_id, sender_id, background_tasks=background_tasks
+        )
+
+        if result.get("ok"):
+            # 如果需要确认，发送确认卡片
+            if cmd_config.get("confirm", False):
+                # 发送确认卡片
+                confirm_card = {
+                    "config": {"wide_screen_mode": True},
+                    "header": {
+                        "title": {"tag": "plain_text", "content": "⚠️ 确认操作"},
+                        "template": "orange",
+                    },
+                    "elements": [
+                        {
+                            "tag": "markdown",
+                            "content": f"**{cmd_config.get('description', '确认执行')}**\n\n{cmd_config.get('confirm_message', '确定要执行此操作吗？')}",
+                        },
+                        {"tag": "hr"},
+                        {
+                            "tag": "action",
+                            "actions": [
+                                {
+                                    "tag": "button",
+                                    "text": {"tag": "plain_text", "content": "✅ 确认"},
+                                    "type": "primary",
+                                    "value": json.dumps(
+                                        {
+                                            "action": cmd_config["action"],
+                                            "command": text,
+                                            "confirmed": True,
+                                        }
+                                    ),
+                                },
+                                {
+                                    "tag": "button",
+                                    "text": {"tag": "plain_text", "content": "❌ 取消"},
+                                    "type": "danger",
+                                    "value": json.dumps(
+                                        {"action": "cancel_command", "command": text}
+                                    ),
+                                },
+                            ],
+                        },
+                    ],
+                }
+                background_tasks.add_task(
+                    feishu_client.send_interactive_card, chat_id, confirm_card
+                )
+                return {"ok": True, "action": "command_confirm", "command": text}
+            else:
+                # 直接执行，发送响应消息
+                response_msg = result.get("message") or cmd_config.get(
+                    "response", "指令已执行"
+                )
+                background_tasks.add_task(
+                    feishu_client.send_text_message, chat_id, response_msg
+                )
+                return {"ok": True, "action": cmd_config["action"], "immediate": True}
+        else:
+            # 执行失败
+            error_msg = result.get("error", "指令执行失败")
+            background_tasks.add_task(
+                feishu_client.send_text_message, chat_id, f"❌ {error_msg}"
+            )
+            return {"ok": False, "error": error_msg}
+
     # 获取或创建session
     session_manager = get_session_manager()
     session = await session_manager.get_or_create_session(chat_id, sender_id)
@@ -709,5 +785,26 @@ async def handle_card_action(
         )
 
         return {"ok": True, "action": "cleaned_up"}
+
+    elif action in ["git_commit", "start_server"]:
+        # 处理需要确认的自定义指令
+        from app.command_processor import get_command_processor
+
+        command_processor = get_command_processor()
+
+        # 查找对应的指令配置
+        for cmd_name, cmd_config in command_processor.commands.items():
+            if cmd_config.get("action") == action:
+                result = await command_processor.execute_command(
+                    cmd_config, chat_id, user_id, background_tasks=background_tasks
+                )
+
+                if result.get("ok"):
+                    response_msg = result.get("message", "指令已执行")
+                    return {"ok": True, "action": action, "message": response_msg}
+                else:
+                    return {"ok": False, "error": result.get("error", "指令执行失败")}
+
+        return {"ok": False, "error": f"Command not found for action: {action}"}
 
     return {"ok": False, "error": f"Unknown action: {action}", "action": "error"}
