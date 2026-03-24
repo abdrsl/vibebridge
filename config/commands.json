@@ -1,0 +1,59 @@
+{
+  "version": "1.0",
+  "description": "AI Project Lab 自定义指令配置",
+  "commands": {
+    "清空session": {
+      "action": "clear_session",
+      "description": "清空当前会话",
+      "confirm": false,
+      "response": "✅ 当前会话已清空"
+    },
+    "kimi": {
+      "action": "switch_model",
+      "model": "kimi-k2.5",
+      "description": "切换到Kimi K2.5模型",
+      "confirm": false,
+      "response": "🤖 已切换到 Kimi K2.5 模型"
+    },
+    "deepseek": {
+      "action": "switch_model",
+      "model": "deepseek-reasoner",
+      "description": "切换到Deepseek Reasoner模型",
+      "confirm": false,
+      "response": "🤖 已切换到 Deepseek Reasoner 模型"
+    },
+    "git 提交": {
+      "action": "git_commit",
+      "description": "执行Git提交",
+      "confirm": true,
+      "confirm_message": "是否执行Git提交？将提交当前所有更改。",
+      "response": "🚀 开始执行Git提交..."
+    },
+    "启动服务器": {
+      "action": "start_server",
+      "description": "启动服务器",
+      "confirm": false,
+      "response": "🖥️ 正在启动服务器..."
+    }
+  },
+  "models": {
+    "kimi-k2.5": {
+      "name": "Kimi K2.5",
+      "provider": "moonshot",
+      "model_id": "moonshot-v1-128k",
+      "api_key_env": "MOONSHOT_API_KEY"
+    },
+    "deepseek-reasoner": {
+      "name": "Deepseek Reasoner",
+      "provider": "deepseek",
+      "model_id": "deepseek-reasoner",
+      "api_key_env": "DEEPSEEK_API_KEY"
+    },
+    "default": {
+      "name": "Deepseek Chat",
+      "provider": "deepseek",
+      "model_id": "deepseek-chat",
+      "api_key_env": "DEEPSEEK_API_KEY"
+    }
+  }
+}
