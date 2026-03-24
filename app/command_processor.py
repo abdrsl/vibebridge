@@ -6,14 +6,14 @@
 import json
 import os
 import subprocess
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Union
 from pathlib import Path
 
 
 class CommandProcessor:
     """自定义指令处理器"""
 
-    def __init__(self, config_path: str = None):
+    def __init__(self, config_path=None):
         """
         初始化指令处理器
 
@@ -25,7 +25,7 @@ class CommandProcessor:
             project_dir = Path(__file__).parent.parent
             config_path = project_dir / "config" / "commands.json"
 
-        self.config_path = Path(config_path)
+        self.config_path: Path = Path(config_path) if config_path else Path(".")
         self.commands = {}
         self.models = {}
         self.load_config()
