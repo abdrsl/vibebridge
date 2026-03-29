@@ -7,7 +7,7 @@
 - **Tunnel URL**: `https://unmobilized-virgen-mitotically.ngrok-free.dev`
 - **Webhook Endpoint**: `https://unmobilized-virgen-mitotically.ngrok-free.dev/feishu/webhook/opencode`
 - **Response Time**: ~1.9-2.0 seconds (within Feishu's 3-second limit)
-- **Encryption**: **DISABLED** (Recommended for initial setup due to decryption issues)
+- **Encryption**: **ENABLED** (Using provided encryption key and verification token)
 - **Status**: **FULLY OPERATIONAL** ✅ (URL verification successful + Live message processing verified)
 
 ## ✅ Live Test Results
@@ -29,9 +29,9 @@
 
 3. **Enter Webhook URL**
     - **URL**: `https://unmobilized-virgen-mitotically.ngrok-free.dev/feishu/webhook/opencode`
-   - **Verification Token**: `z3V8Qc6B3NqXjaKpP5rL9sT2uV1yW4x7A0D4F6H9K2M`
-    - **Encrypt Key**: `z8V8Qc6B3NqXjwKpP5rL9sT2uV1yW4x7A0D3F6H9K2M`
-    - **Important**: Disable encryption in Feishu console for now (toggle "启用加密" to OFF)
+    - **Verification Token**: `1PCumkwcAySWFrsg3p2bkhetQXMOHdgM`
+    - **Encrypt Key**: `7a3sd20f323AbdurusulSalamat`
+    - **Important**: Enable encryption in Feishu console (toggle "启用加密" to ON)
     - Click "Save"
 
 4. **Verify Configuration**
