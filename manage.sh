@@ -109,7 +109,7 @@ start_tunnel() {
         sleep 1
         
         cd "$PROJECT_DIR"
-        nohup ngrok http 8000 > "$LOG_DIR/ngrok.log" 2>&1 &
+        nohup ngrok http 8000 --pooling-enabled > "$LOG_DIR/ngrok.log" 2>&1 &
         echo $! > "$PID_DIR/tunnel.pid"
         
         sleep 8

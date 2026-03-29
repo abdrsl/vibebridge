@@ -75,7 +75,7 @@ python tunnel_monitor.py
 
 **代码示例**:
 ```python
-from app.message_deduplicator import get_deduplicator
+from src.legacy.message_deduplicator import get_deduplicator
 
 deduplicator = get_deduplicator()
 if deduplicator.is_duplicate(message_id):
@@ -92,7 +92,7 @@ print(f"去重统计: {stats}")
 
 **装饰器使用**:
 ```python
-from app.retry_handler import retry_async
+from src.legacy.retry_handler import retry_async
 
 @retry_async(max_retries=3, base_delay=1.0)
 async def api_call():

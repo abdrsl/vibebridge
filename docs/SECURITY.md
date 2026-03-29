@@ -22,7 +22,7 @@ Sensitive environment variables are automatically encrypted/decrypted using the 
 
 ### Usage in Code
 ```python
-from app.secure_config import get_secret
+from src.legacy.secure_config import get_secret
 
 # Automatically decrypts if _ENC suffix exists
 api_key = get_secret("DEEPSEEK_API_KEY")
@@ -31,10 +31,10 @@ api_key = get_secret("DEEPSEEK_API_KEY")
 ### Migration Tool
 ```bash
 # Generate new master key
-python -c "from app.secure_config import init_master_key; init_master_key()"
+python -c "from src.legacy.secure_config import init_master_key; init_master_key()"
 
 # Encrypt existing .env file
-python -c "from app.secure_config import migrate_env_file; migrate_env_file('.env', '.env.encrypted')"
+python -c "from src.legacy.secure_config import migrate_env_file; migrate_env_file('.env', '.env.encrypted')"
 ```
 
 ## 2. Feishu Webhook Security
@@ -173,14 +173,14 @@ All Feishu webhook requests (`/feishu/webhook*`) are validated using:
 
 1. **Generate master key**:
    ```bash
-   python -c "from app.secure_config import init_master_key; init_master_key()"
+python -c "from src.legacy.secure_config import init_master_key; init_master_key()"
    ```
 
 2. **Set up environment**:
    ```bash
    cp .env.example .env
    # Edit .env with your values
-   python -c "from app.secure_config import migrate_env_file; migrate_env_file('.env', '.env.encrypted')"
+python -c "from src.legacy.secure_config import migrate_env_file; migrate_env_file('.env', '.env.encrypted')"
    mv .env.encrypted .env
    ```
 

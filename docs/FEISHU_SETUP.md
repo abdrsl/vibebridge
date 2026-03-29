@@ -2,10 +2,10 @@
 
 ## Current Tunnel Status
 
-✅ **Tunnel is running** with serveo.net (free SSH tunnel)
+✅ **Tunnel is running** with ngrok (stable tunnel)
 
-- **Tunnel URL**: `https://01ce114b53941352-112-96-54-27.serveousercontent.com`
-- **Webhook Endpoint**: `https://01ce114b53941352-112-96-54-27.serveousercontent.com/feishu/webhook/opencode`
+- **Tunnel URL**: `https://unmobilized-virgen-mitotically.ngrok-free.dev`
+- **Webhook Endpoint**: `https://unmobilized-virgen-mitotically.ngrok-free.dev/feishu/webhook/opencode`
 - **Response Time**: ~1.9-2.0 seconds (within Feishu's 3-second limit)
 - **Encryption**: **DISABLED** (Recommended for initial setup due to decryption issues)
 - **Status**: **FULLY OPERATIONAL** ✅ (URL verification successful + Live message processing verified)
@@ -28,7 +28,7 @@
    - Under "Request URL", click "Edit"
 
 3. **Enter Webhook URL**
-    - **URL**: `https://01ce114b53941352-112-96-54-27.serveousercontent.com/feishu/webhook/opencode`
+    - **URL**: `https://unmobilized-virgen-mitotically.ngrok-free.dev/feishu/webhook/opencode`
    - **Verification Token**: `z3V8Qc6B3NqXjaKpP5rL9sT2uV1yW4x7A0D4F6H9K2M`
     - **Encrypt Key**: `z8V8Qc6B3NqXjwKpP5rL9sT2uV1yW4x7A0D3F6H9K2M`
     - **Important**: Disable encryption in Feishu console for now (toggle "启用加密" to OFF)
@@ -52,22 +52,21 @@
 
 ## Tunnel Management
 
-### Current Tunnel (localhost.run)
+### Current Tunnel (ngrok)
 
 ```bash
 # Check tunnel status
-ps aux | grep localhost.run
+ps aux | grep ngrok
 
 # View tunnel logs
-tail -f logs/lhr_tunnel.log
+tail -f logs/ngrok.log
 
 # Restart tunnel (if needed)
-pkill -f "localhost.run"
-cd /home/user/workspace/ai-project
-ssh -o StrictHostKeyChecking=no -R 80:localhost:8000 nokey@localhost.run > logs/lhr_tunnel.log 2>&1 &
+./manage.sh stop-tunnel
+./manage.sh tunnel
 ```
 
-**Note**: localhost.run domains are temporary and change each time you restart the tunnel. The current URL will remain valid as long as the SSH connection stays active.
+**Note**: ngrok provides stable URLs with the free tier. The URL changes only if you restart ngrok or after 2 hours of inactivity.
 
 ### Alternative Tunnels
 
@@ -175,7 +174,7 @@ uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload > logs/server_final.log
 
 **Step 4: Test URL Verification (Unencrypted)**
 ```bash
-curl -X POST https://01ce114b53941352-112-96-54-27.serveousercontent.com/feishu/webhook/opencode \
+curl -X POST https://unmobilized-virgen-mitotically.ngrok-free.dev/feishu/webhook/opencode \
   -H "Content-Type: application/json" \
   -d '{"token": "YOUR_VERIFICATION_TOKEN", "challenge": "test123", "type": "url_verification"}'
 ```
@@ -196,7 +195,7 @@ Look for `[Crypto]` or `[Webhook]` messages to identify decryption errors.
 
 serveo.net tunnels are **temporary** and change each time you restart the tunnel. If Feishu reports "返回数据不是合法的JSON格式", the tunnel URL may have changed.
 
-**Current Tunnel URL**: `https://01ce114b53941352-112-96-54-27.serveousercontent.com`
+**Current Tunnel URL**: `https://unmobilized-virgen-mitotically.ngrok-free.dev`
 
 **To restart tunnel and get new URL:**
 
@@ -225,12 +224,51 @@ grep "serveousercontent" logs/serveo.log | grep -o "https://[^ ]*" | head -1
 4. **Production Tunnel**: Set up ngrok or Cloudflare Tunnel for more reliable access
 5. **Monitoring**: Add monitoring for task success rates and response times
 
+## 📱 Mobile-Friendly Configuration Guide
+
+### Quick Setup from Mobile Device
+
+1. **Copy Webhook URL**:
+   ```
+   https://unmobilized-virgen-mitotically.ngrok-free.dev/feishu/webhook/opencode
+   ```
+   
+2. **Open Feishu Developer Console** on mobile browser:
+   - Visit: https://open.feishu.cn/app
+   - Login with your Feishu account
+   
+3. **Configure Event Subscription**:
+   - Paste the Webhook URL in "Request URL" field
+   - Set Verification Token: `z3V8Qc6B3NqXjaKpP5rL9sT2uV1yW4x7A0D4F6H9K2M`
+   - Set Encrypt Key: `z8V8Qc6B3NqXjwKpP5rL9sT2uV1yW4x7A0D3F6H9K2M`
+   - **Important**: Disable encryption toggle (设置加密为关闭)
+   
+4. **Subscribe to Events**:
+   - Add `im.message.receive_v1` (接收消息)
+   
+5. **Enable Permissions**:
+   - Enable `im:message` (发送和接收消息)
+   - Enable `im:message:send_as_bot` (以机器人身份发送消息)
+
+### Troubleshooting on Mobile
+
+- **URL Verification Fails**: Ensure you copied the entire URL including `https://`
+- **Connection Timeout**: The tunnel may be restarting, wait 30 seconds and try again
+- **Encryption Errors**: Keep encryption disabled for initial setup
+- **QR Code Alternative**: Consider generating a QR code with the webhook URL for easier entry
+
+### Monitoring from Mobile
+
+- Check tunnel status: `curl https://unmobilized-virgen-mitotically.ngrok-free.dev/health`
+- URL changes will be automatically notified in Feishu chat
+- Use simple text commands: `模型`, `kimi`, `deepseek`, `清空session`, `启动服务器`, `git 提交`
+
 ## Files Reference
 
-- `app/main.py` - Webhook endpoint (`/feishu/webhook/opencode`)
-- `app/feishu_crypto.py` - Encryption/decryption utilities
-- `app/feishu_client.py` - Feishu API client and card builders
-- `app/opencode_integration.py` - OpenCode task execution
-- `app/task_store.py` - JSON file-based task storage
+- `src/legacy/main.py` - Webhook endpoint (`/feishu/webhook/opencode`)
+- `src/legacy/feishu_crypto.py` - Encryption/decryption utilities
+- `src/legacy/feishu_client.py` - Feishu API client and card builders
+- `src/legacy/opencode_integration.py` - OpenCode task execution
+- `src/legacy/task_store.py` - JSON file-based task storage
 - `TUNNEL_SETUP.md` - Detailed tunnel comparison guide
 - `start_ngrok.sh` - Ngrok setup script

@@ -129,7 +129,7 @@ async def handle_message_type(self, message: Message):
 
 ```bash
 # 运行多智能体系统测试
-python test_multi_agent_start.py
+python tests/test_multi_agent_start.py
 
 # 运行API测试
 pytest tests/test_api.py

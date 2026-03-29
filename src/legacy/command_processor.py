@@ -255,21 +255,38 @@ class CommandProcessor:
     async def _start_server(self, chat_id: str) -> Dict[str, Any]:
         """启动服务器"""
         import asyncio
+        import httpx
         from .feishu_client import feishu_client
+
+        async def check_server_running() -> bool:
+            """检查服务器是否在运行"""
+            try:
+                async with httpx.AsyncClient(timeout=5.0) as client:
+                    response = await client.get("http://127.0.0.1:8000/health")
+                    return response.status_code == 200 and '{"ok":true' in response.text
+            except Exception:
+                return False
+
+        async def wait_for_server_start(timeout: int = 30, interval: int = 2) -> bool:
+            """等待服务器启动，带重试"""
+            import time
+            start_time = time.time()
+            attempts = 0
+            
+            while time.time() - start_time < timeout:
+                attempts += 1
+                if await check_server_running():
+                    return True
+                await asyncio.sleep(interval)
+            
+            return False
 
         async def do_start_server():
             try:
                 project_dir = Path(__file__).parent.parent
 
                 # 检查服务器是否已在运行
-                result = subprocess.run(
-                    ["curl", "-s", "http://127.0.0.1:8000/health"],
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                )
-
-                if result.returncode == 0 and '{"ok":true}' in result.stdout:
+                if await check_server_running():
                     await feishu_client.send_text_message(
                         chat_id,
                         "✅ 服务器已经在运行中！\n\n"
@@ -281,16 +298,14 @@ class CommandProcessor:
                 # 启动服务器
                 await feishu_client.send_text_message(chat_id, "🖥️ 正在启动服务器...")
 
+                # 使用manage.sh启动服务器，确保虚拟环境正确
                 subprocess.Popen(
                     [
-                        "python",
-                        "-m",
-                        "uvicorn",
-                        "src.main:app",
-                        "--host",
-                        "0.0.0.0",
-                        "--port",
-                        "8000",
+                        "bash",
+                        "-c",
+                        "cd /home/user/workspace/ai-project && "
+                        "source .venv/bin/activate && "
+                        "python -m uvicorn src.main:app --host 0.0.0.0 --port 8000",
                     ],
                     cwd=project_dir,
                     stdout=subprocess.DEVNULL,
@@ -298,27 +313,25 @@ class CommandProcessor:
                     start_new_session=True,
                 )
 
-                # 等待服务器启动
-                await asyncio.sleep(5)
-
-                # 检查是否启动成功
-                result = subprocess.run(
-                    ["curl", "-s", "http://127.0.0.1:8000/health"],
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                )
-
-                if result.returncode == 0 and '{"ok":true}' in result.stdout:
+                # 等待服务器启动，带重试
+                await feishu_client.send_text_message(chat_id, "⏳ 等待服务器启动...")
+                
+                if await wait_for_server_start(timeout=30, interval=2):
                     await feishu_client.send_text_message(
                         chat_id,
                         "✅ 服务器启动成功！\n\n"
                         "📍 本地地址: http://127.0.0.1:8000\n"
-                        "🌐 如需公网访问，请启动隧道: ./manage.sh tunnel",
+                        "🌐 如需公网访问，请启动隧道: ./manage.sh tunnel\n"
+                        "📊 状态检查: ./manage.sh status",
                     )
                 else:
                     await feishu_client.send_text_message(
-                        chat_id, "❌ 服务器启动失败，请检查日志"
+                        chat_id,
+                        "❌ 服务器启动失败，请检查：\n"
+                        "1. 虚拟环境是否激活\n"
+                        "2. 端口8000是否被占用\n"
+                        "3. 查看日志: tail -f logs/server.log\n"
+                        "4. 手动启动: ./manage.sh start",
                     )
 
             except Exception as e:

@@ -34,6 +34,12 @@
       "description": "启动服务器",
       "confirm": false,
       "response": "🖥️ 正在启动服务器..."
+    },
+    "模型": {
+      "action": "show_models",
+      "description": "显示可用模型和当前模型",
+      "confirm": false,
+      "response": "🤖 模型信息加载中..."
     }
   },
   "models": {

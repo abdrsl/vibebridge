@@ -170,9 +170,20 @@ class TunnelMonitor:
     async def _check_tunnel_health(self, url: str) -> bool:
         """检查隧道健康状态"""
         try:
-            response = requests.get(f"{url}/health", timeout=5)
-            return response.status_code == 200 and '{"ok":true}' in response.text
-        except:
+            import time
+
+            start = time.time()
+            response = requests.get(f"{url}/", timeout=5)
+            elapsed = time.time() - start
+            print(
+                f"[TunnelMonitor] Health check: {url}/ -> status={response.status_code}, elapsed={elapsed:.2f}s",
+                flush=True,
+            )
+            result = response.status_code == 200 and '"status":"ok"' in response.text
+            print(f"[TunnelMonitor] Health check result: {result}", flush=True)
+            return result
+        except Exception as e:
+            print(f"[TunnelMonitor] Health check error: {e}", flush=True)
             return False
 
     async def run(self):
@@ -188,10 +199,15 @@ class TunnelMonitor:
 
         self.running = True
         is_first_run = True
+        iteration = 0
 
         while self.running:
             try:
                 current_url = self._get_current_url()
+                iteration += 1
+                print(
+                    f"[TunnelMonitor] 检查周期 #{iteration}，当前URL: {current_url or '无'}"
+                )
 
                 if current_url:
                     # 检查是否是新URL

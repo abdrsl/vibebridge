@@ -8,7 +8,7 @@
    - Reduced verbose logging
    - Response times under 2 seconds (within Feishu's 3-second limit)
 3. **Established Stable Tunnel**: 
-   - **Current Tunnel**: `https://01ce114b53941352-112-96-54-27.serveousercontent.com` (serveo.net)
+   - **Current Tunnel**: `https://unmobilized-virgen-mitotically.ngrok-free.dev` (ngrok)
    - **Response Time**: ~1.9-2.0 seconds
    - **Encryption**: Currently disabled for reliability
 4. **Verified End-to-End Functionality**:
@@ -34,7 +34,7 @@
 ### 🔧 System Monitoring
 1. **Check Server Logs**: `tail -f logs/server_final.log`
 2. **Monitor Tunnel**: `tail -f logs/serveo.log`
-3. **Verify Tasks**: OpenCode tasks stored in memory (see `app/opencode_integration.py`)
+3. **Verify Tasks**: OpenCode tasks stored in memory (see `src/legacy/opencode_integration.py`)
 
 ### 📋 Next Enhancement Opportunities
 1. **Re-enable Encryption**: Fix decryption issues when ready
@@ -45,14 +45,14 @@
 ## 🔧 Technical Details
 
 ### Tunnel Information
-- **Type**: serveo.net (free SSH tunnel)
-- **URL**: `https://01ce114b53941352-112-96-54-27.serveousercontent.com`
+- **Type**: ngrok (stable tunnel)
+- **URL**: `https://unmobilized-virgen-mitotically.ngrok-free.dev`
 - **Port**: 8000 → localhost:8000
-- **Logs**: `logs/serveo.log`
+- **Logs**: `logs/ngrok.log`
 - **Restart Command**: 
   ```bash
-  pkill -f "serveo"
-  ssh -o StrictHostKeyChecking=no -R 80:localhost:8000 serveo.net > logs/serveo.log 2>&1 &
+  ./manage.sh stop-tunnel
+  ./manage.sh tunnel
   ```
 
 ### Server Status
@@ -62,17 +62,17 @@
 
 ### OpenCode Integration
 - **Task Storage**: `data/tasks/` (JSON files)
-- **Model**: DeepSeek (configured in `app/opencode_integration.py`)
+- **Model**: DeepSeek (configured in `src/legacy/opencode_integration.py`)
 - **Task Lifecycle**: pending → running → completed/failed
 
 ## ⚠️ Important Notes
 
-1. **Tunnel Temporariness**: localhost.run URLs change each restart
-   - Current URL valid until SSH connection drops
-   - For production, consider ngrok or Cloudflare Tunnel
+1. **Tunnel Stability**: ngrok provides stable URLs with free tier
+   - URL remains valid across restarts with pooling enabled
+   - Automatic monitoring and Feishu notification on URL changes
 
-2. **Ngrok Token Issue**: Existing ngrok authtoken appears to be v1, incompatible with installed ngrok v3
-   - Solution: Get new v3 token from [ngrok.com](https://ngrok.com)
+2. **Ngrok Status**: Ngrok is now configured and working with v3 token.
+   - Tunnel URL is stable and automatically monitored.
 
 3. **Feishu Rate Limits**: Be mindful of Feishu API rate limits
    - Messages per minute: 100
@@ -80,16 +80,16 @@
 
 ## 📁 Key Files
 
-- `app/main.py` - Webhook endpoints (`/feishu/webhook/opencode`)
-- `app/feishu_crypto.py` - Encryption/decryption
-- `app/feishu_client.py` - Feishu API client
-- `app/opencode_integration.py` - OpenCode task execution
+- `src/legacy/main.py` - Webhook endpoints (`/feishu/webhook/opencode`)
+- `src/legacy/feishu_crypto.py` - Encryption/decryption
+- `src/legacy/feishu_client.py` - Feishu API client
+- `src/legacy/opencode_integration.py` - OpenCode task execution
 - `.env` - Environment variables (Feishu keys)
 
 ## 🆘 Troubleshooting
 
 If Feishu verification fails:
-1. Check tunnel connectivity: `curl https://01ce114b53941352-112-96-54-27.serveousercontent.com`
+1. Check tunnel connectivity: `curl https://unmobilized-virgen-mitotically.ngrok-free.dev`
 2. Check server logs: `tail -f logs/server_final.log`
 3. Ensure encryption is disabled in Feishu console
 
