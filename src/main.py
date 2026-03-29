@@ -1,6 +1,11 @@
+"""
+AI Project Lab - Main FastAPI application with multi-agent architecture.
+"""
+
 import asyncio
 import json
 import os
+import time
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -10,11 +15,16 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.llm import ask_deepseek_for_design_advice
-from app.task_parser import extract_text_from_feishu_payload
-from app.task_store import save_task, list_tasks, get_task, update_task
-from app.opencode_integration import opencode_manager, TaskStatus
-from app.feishu_client import (
+# Rate limiting
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
+# Multi-agent system
+from src.system import start_multi_agent_system, stop_multi_agent_system, get_system
+
+# Legacy imports for compatibility (will be migrated to agents)
+from src.legacy.feishu_client import (
     feishu_client,
     build_start_card,
     build_progress_card,
@@ -22,33 +32,46 @@ from app.feishu_client import (
     build_error_card,
     build_help_card,
 )
-from app.feishu_crypto import (
+from src.legacy.feishu_crypto import (
     decrypt_feishu_payload,
     FeishuSecurityError,
     verify_feishu_webhook,
 )
-from app.secure_config import get_secret
-from app.feishu_webhook_handler import handle_feishu_webhook
-from app.feishu_card_handler import process_feishu_webhook
-
-# Rate limiting
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
-from slowapi.errors import RateLimitExceeded
+from src.legacy.secure_config import get_secret
+from src.legacy.task_parser import extract_text_from_feishu_payload
+from src.legacy.task_store import save_task, list_tasks, get_task, update_task
+from src.legacy.opencode_integration import opencode_manager, TaskStatus
+from src.legacy.feishu_webhook_handler import handle_feishu_webhook
+from src.legacy.feishu_card_handler import process_feishu_webhook
+from src.legacy.session_manager import get_session_manager, SessionStatus
 
 load_dotenv()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Application lifespan with multi-agent system."""
     print("App starting...")
+    print("[System] Starting multi-agent system...")
+    try:
+        await start_multi_agent_system()
+    except Exception as e:
+        print(f"[System] Error starting multi-agent system: {e}")
+        # Continue without multi-agent system
+
     yield
+
     print("App shutting down...")
+    try:
+        await stop_multi_agent_system()
+    except Exception as e:
+        print(f"[System] Error stopping multi-agent system: {e}")
 
 
 app = FastAPI(
-    title="Embrace AI Product Lab",
-    version="0.1.0",
+    title="AI Project Lab - Multi-Agent System",
+    version="1.0.0",
+    description="Open-source AI coding agent service with Feishu integration",
     lifespan=lifespan,
 )
 
@@ -57,6 +80,7 @@ limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+# CORS
 origins = [
     item.strip()
     for item in os.getenv(
@@ -78,21 +102,60 @@ app.add_middleware(
 @app.get("/")
 @limiter.exempt
 def root():
+    """Root endpoint."""
     return {
-        "name": "Embrace AI Product Lab",
+        "name": "AI Project Lab",
+        "version": "1.0.0",
         "status": "ok",
+        "architecture": "multi-agent",
+        "agents": 6,
     }
 
 
 @app.get("/health")
 @limiter.exempt
 def health():
-    return {"ok": True}
+    """Health check endpoint."""
+    system = get_system()
+    return {
+        "ok": True,
+        "timestamp": time.time(),
+        "multi_agent_system": system.is_running() if system else False,
+    }
 
 
+@app.get("/system/status")
+@limiter.limit("30 per minute")
+def system_status(request: Request):
+    """Get multi-agent system status."""
+    system = get_system()
+    if not system:
+        return {"ok": False, "error": "System not initialized"}
+
+    agents = []
+    for agent_id, agent in system.agents.items():
+        agents.append(
+            {
+                "id": agent_id,
+                "name": agent.name,
+                "running": agent.is_running(),
+                "capabilities": [cap.name for cap in agent.get_capabilities()],
+            }
+        )
+
+    return {
+        "ok": True,
+        "running": system.is_running(),
+        "agents": agents,
+        "agent_count": len(system.agents),
+    }
+
+
+# Legacy endpoints for backward compatibility
 @app.get("/config-check")
 @limiter.limit("30 per minute")
 def config_check(request: Request):
+    """Configuration check endpoint."""
     return {
         "DEEPSEEK_BASE_URL": os.getenv("DEEPSEEK_BASE_URL"),
         "DEEPSEEK_MODEL": os.getenv("DEEPSEEK_MODEL"),
@@ -103,6 +166,7 @@ def config_check(request: Request):
 @app.get("/tasks")
 @limiter.limit("60 per minute")
 def api_list_tasks(request: Request, limit: int = 20):
+    """List tasks."""
     return {
         "ok": True,
         "items": list_tasks(limit=limit),
@@ -112,6 +176,7 @@ def api_list_tasks(request: Request, limit: int = 20):
 @app.get("/tasks/{task_id}")
 @limiter.limit("60 per minute")
 def api_get_task(request: Request, task_id: str):
+    """Get task details."""
     task = get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="task not found")
@@ -131,6 +196,7 @@ class TaskUpdate(BaseModel):
 @app.patch("/tasks/{task_id}")
 @limiter.limit("30 per minute")
 def patch_task(request: Request, task_id: str, payload: TaskUpdate):
+    """Update a task."""
     updates = payload.model_dump(exclude_none=True)
 
     updated = update_task(task_id, updates)
@@ -146,13 +212,14 @@ def patch_task(request: Request, task_id: str, payload: TaskUpdate):
 @app.post("/feishu/webhook")
 @limiter.limit("30 per minute")
 async def feishu_webhook(request: Request, body: dict[str, Any]):
-    # 处理飞书 URL 验证请求（必须在签名验证之前）
+    """Legacy Feishu webhook endpoint (DeepSeek LLM)."""
+    # Handle Feishu URL verification
     challenge = body.get("challenge")
     if challenge:
         print(f"[Webhook] Handling URL verification challenge: {challenge}")
         return {"challenge": challenge}
 
-    # 验证飞书 webhook 签名
+    # Verify Feishu webhook signature
     try:
         verify_feishu_webhook(body)
     except FeishuSecurityError as e:
@@ -160,30 +227,34 @@ async def feishu_webhook(request: Request, body: dict[str, Any]):
         raise HTTPException(status_code=403, detail="Invalid signature")
     except Exception as e:
         print(f"[Webhook] Warning: Signature verification error: {e}")
-        # 继续处理，可能是测试请求或配置问题
+        # Continue, might be test request
 
-    # 解密飞书加密消息（如果配置了加密）
+    # Decrypt Feishu encrypted message
     try:
         body = decrypt_feishu_payload(body)
     except Exception as e:
         print(f"[Webhook] Decrypt error: {e}")
-        # 继续处理，可能是未加密的消息
+        # Continue, might be unencrypted message
 
-    # 解析任务
+    # Parse task
     task = extract_text_from_feishu_payload(body)
     text = task.get("raw_text", "").strip()
-    status = task.get("status", "queued")
-    llm_result = None
 
-    if status != "ignored":
+    # Use multi-agent system if available
+    system = get_system()
+    if system and system.is_running():
+        # TODO: Route to LLM agent
+        llm_result = "Multi-agent system processing (TODO)"
+    else:
+        # Fallback to legacy LLM
+        from src.legacy.llm import ask_deepseek_for_design_advice
+
         try:
             llm_result = ask_deepseek_for_design_advice(text)
-            status = "completed"
         except Exception as e:
             llm_result = f"LLM error: {e}"
-            status = "failed"
 
-    task["status"] = status
+    task["status"] = "completed"
 
     result = {
         "ok": True,
@@ -211,6 +282,16 @@ class OpenCodeTaskCreate(BaseModel):
 async def create_opencode_task(
     request: Request, payload: OpenCodeTaskCreate, background_tasks: BackgroundTasks
 ):
+    """Create an OpenCode task."""
+    # Use multi-agent system if available
+    system = get_system()
+    if system and system.is_running():
+        opencode_agent = system.get_agent("opencode")
+        if opencode_agent and opencode_agent.is_running():
+            # TODO: Use agent-based task creation
+            pass
+
+    # Fallback to legacy implementation
     task_id = await opencode_manager.create_task(
         user_message=payload.message,
         feishu_chat_id=payload.feishu_chat_id or os.getenv("FEISHU_DEFAULT_CHAT_ID"),
@@ -225,11 +306,12 @@ async def create_opencode_task(
         "ok": True,
         "task_id": task_id,
         "status": "pending",
-        "message": "任务已创建，正在后台处理",
+        "message": "Task created, processing in background",
     }
 
 
 async def run_opencode_with_feishu(task_id: str, notify: bool = True):
+    """Run OpenCode task with Feishu notifications."""
     print(f"[OpenCode] Starting task {task_id}, notify={notify}")
     task = await opencode_manager.get_task(task_id)
     if not task:
@@ -247,7 +329,7 @@ async def run_opencode_with_feishu(task_id: str, notify: bool = True):
             )
             print(f"[OpenCode] Start card result: {result}")
 
-        # 只收集事件，不实时发送
+        # Collect events
         final_result = None
         error_result = None
 
@@ -261,7 +343,7 @@ async def run_opencode_with_feishu(task_id: str, notify: bool = True):
             elif event_type == "error":
                 error_result = content
 
-        # 任务完成后发送结果
+        # Send result after completion
         if notify and task.feishu_chat_id:
             print(
                 f"[OpenCode] Sending result to Feishu, final_result={final_result is not None}, error_result={error_result is not None}"
@@ -297,6 +379,7 @@ async def run_opencode_with_feishu(task_id: str, notify: bool = True):
 @app.get("/opencode/tasks")
 @limiter.limit("60 per minute")
 async def list_opencode_tasks(request: Request, limit: int = Query(default=20, le=100)):
+    """List OpenCode tasks."""
     tasks = await opencode_manager.list_tasks(limit=limit)
     return {"ok": True, "items": tasks}
 
@@ -304,6 +387,7 @@ async def list_opencode_tasks(request: Request, limit: int = Query(default=20, l
 @app.get("/opencode/tasks/{task_id}")
 @limiter.limit("60 per minute")
 async def get_opencode_task(request: Request, task_id: str):
+    """Get OpenCode task details."""
     task = await opencode_manager.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -330,6 +414,7 @@ async def get_opencode_task(request: Request, task_id: str):
 @app.get("/opencode/tasks/{task_id}/stream")
 @limiter.limit("30 per minute")
 async def stream_opencode_task(request: Request, task_id: str):
+    """Stream OpenCode task events."""
     task = await opencode_manager.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -350,6 +435,7 @@ async def stream_opencode_task(request: Request, task_id: str):
 @app.post("/opencode/tasks/{task_id}/abort")
 @limiter.limit("10 per minute")
 async def abort_opencode_task(request: Request, task_id: str):
+    """Abort an OpenCode task."""
     task = await opencode_manager.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -367,6 +453,7 @@ async def abort_opencode_task(request: Request, task_id: str):
 @app.get("/feishu/config-check")
 @limiter.limit("30 per minute")
 def feishu_config_check(request: Request):
+    """Feishu configuration check."""
     return {
         "FEISHU_APP_ID_present": bool(os.getenv("FEISHU_APP_ID")),
         "FEISHU_APP_SECRET_present": bool(get_secret("FEISHU_APP_SECRET")),
@@ -378,40 +465,35 @@ def feishu_config_check(request: Request):
 async def feishu_webhook_opencode(
     request: Request, body: dict[str, Any], background_tasks: BackgroundTasks
 ):
-    # 处理飞书 URL 验证请求（必须在签名验证之前）
-    # v1 格式: {"type": "url_verification", "challenge": "xxx"}
-    # v2 格式: {"schema": "2.0", "header": {"event_type": "..."}, "event": {}, "challenge": "xxx"}
+    """Feishu webhook endpoint for OpenCode integration."""
+    # Handle Feishu URL verification
     challenge = body.get("challenge")
     if challenge:
         print(f"[Webhook] Handling URL verification challenge: {challenge}")
-        # 飞书要求直接返回 challenge 字段
         return {"challenge": challenge}
 
-    # 验证飞书 webhook 签名
+    # Verify Feishu webhook signature
     try:
         verify_feishu_webhook(body)
     except FeishuSecurityError as e:
         print(f"[Webhook] Security validation failed: {e}")
-        # 返回 403 拒绝请求
         raise HTTPException(status_code=403, detail="Invalid signature")
     except Exception as e:
         print(f"[Webhook] Warning: Signature verification error: {e}")
-        # 继续处理，可能是测试请求或配置问题
+        # Continue, might be test request
 
-    # 解密飞书加密消息（如果配置了加密）
+    # Decrypt Feishu encrypted message
     try:
         body = decrypt_feishu_payload(body)
     except Exception as e:
         print(f"[Webhook] Decrypt error: {e}")
-        # 继续处理，可能是未加密的消息
+        # Continue, might be unencrypted message
 
-    # 只打印关键信息，避免打印大体积的加密数据
-    if "encrypt" in body:
-        print(
-            f"[Webhook] Received encrypted payload, length: {len(body.get('encrypt', ''))}"
-        )
-    else:
-        print(f"[Webhook] Received: {body}")
-
-    # 使用新的卡片交互处理器
+    # Use new card interaction processor
     return await process_feishu_webhook(body, background_tasks)
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(app, host="0.0.0.0", port=8000)

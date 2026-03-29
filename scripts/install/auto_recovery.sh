@@ -40,11 +40,11 @@ start_server() {
     log "启动服务器..."
     cd "$PROJECT_DIR"
     source .venv/bin/activate
-    nohup python -m uvicorn app.main:app --host 0.0.0.0 --port $SERVER_PORT > "$PROJECT_DIR/logs/server.log" 2>&1 &
+    nohup python -m uvicorn src.main:app --host 0.0.0.0 --port $SERVER_PORT > "$PROJECT_DIR/logs/server.log" 2>&1 &
     sleep 5
     
     if check_server; then
-        log "✅ 服务器启动成功 (PID: $(pgrep -f 'uvicorn app.main:app' | head -1))"
+        log "✅ 服务器启动成功 (PID: $(pgrep -f 'uvicorn src.main:app' | head -1))"
         return 0
     else
         log "❌ 服务器启动失败"
@@ -55,7 +55,7 @@ start_server() {
 # 停止服务器
 stop_server() {
     log "停止服务器..."
-    pkill -f "uvicorn app.main:app" 2>/dev/null
+    pkill -f "uvicorn src.main:app" 2>/dev/null
     sleep 2
 }
 
@@ -354,7 +354,7 @@ show_status() {
     if check_server; then
         echo "✅ 服务器: 运行中"
         echo "   地址: http://127.0.0.1:$SERVER_PORT"
-        local pid=$(pgrep -f "uvicorn app.main:app" | head -1)
+        local pid=$(pgrep -f "uvicorn src.main:app" | head -1)
         echo "   PID: $pid"
     else
         echo "❌ 服务器: 未运行"

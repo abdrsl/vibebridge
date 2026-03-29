@@ -45,7 +45,7 @@ stop_system() {
     info "Stopping existing processes..."
     
     # Kill uvicorn processes
-    pkill -f "uvicorn app.main:app" 2>/dev/null || true
+    pkill -f "uvicorn src.main:app" 2>/dev/null || true
     # Kill tunnel processes
     pkill -f "ssh.*serveo.net" 2>/dev/null || true
     # Kill tunnel manager
@@ -57,7 +57,7 @@ stop_system() {
 
 # Check if system is already running
 check_running() {
-    if pgrep -f "uvicorn app.main:app" > /dev/null; then
+    if pgrep -f "uvicorn src.main:app" > /dev/null; then
         echo "server"
     fi
     if pgrep -f "ssh.*serveo.net" > /dev/null; then
@@ -85,7 +85,7 @@ case "${1:-start}" in
         
         # Start FastAPI server
         info "Starting FastAPI server..."
-        nohup python -m uvicorn app.main:app \
+        nohup python -m uvicorn src.main:app \
             --host 0.0.0.0 \
             --port 8000 \
             > "$LOG_DIR/server.log" 2>&1 &
@@ -105,7 +105,7 @@ case "${1:-start}" in
         
         # Start tunnel manager
         info "Starting tunnel manager..."
-        nohup python -m app.tunnel_manager \
+        nohup python -m src.legacy.tunnel_manager \
             > "$LOG_DIR/tunnel_manager.log" 2>&1 &
         TUNNEL_MANAGER_PID=$!
         info "Tunnel manager started with PID: $TUNNEL_MANAGER_PID"
@@ -137,7 +137,7 @@ case "${1:-start}" in
     
     status)
         info "System status:"
-        if pgrep -f "uvicorn app.main:app" > /dev/null; then
+        if pgrep -f "uvicorn src.main:app" > /dev/null; then
             info "✅ Server: RUNNING"
         else
             info "❌ Server: STOPPED"

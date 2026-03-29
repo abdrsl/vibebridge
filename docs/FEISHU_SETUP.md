@@ -170,7 +170,7 @@ FEISHU_VERIFICATION_TOKEN=your_verification_token_from_feishu
 cd /home/user/workspace/ai-project
 pkill -f "uvicorn" 2>/dev/null || true
 source .venv/bin/activate
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload > logs/server_final.log 2>&1 &
+uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload > logs/server_final.log 2>&1 &
 ```
 
 **Step 4: Test URL Verification (Unencrypted)**

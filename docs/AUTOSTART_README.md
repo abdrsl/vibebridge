@@ -167,9 +167,8 @@ cat /home/user/workspace/ai-project/logs/current_tunnel_url.txt
 │   ├── localtunnel.log    # localtunnel日志
 │   ├── auto_recovery.log  # 自动恢复日志
 │   ├── cron.log           # 定时任务日志
-│   ├── current_tunnel_url.txt    # 当前隧道URL
-│   └── current_tunnel_type.txt   # 当前隧道类型
-└── FIX_SUMMARY.md         # 修复总结文档
+ │   ├── current_tunnel_url.txt    # 当前隧道URL
+ │   └── current_tunnel_type.txt   # 当前隧道类型
 ```
 
 ## 🔧 故障排除
@@ -186,7 +185,7 @@ lsof -i :8000
 # 手动启动查看错误
 cd /home/user/workspace/ai-project
 source .venv/bin/activate
-python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+python -m uvicorn src.main:app --host 0.0.0.0 --port 8000
 ```
 
 ### 隧道无法启动
@@ -305,4 +304,3 @@ rm -rf logs/pids
 如有问题，请查看：
 - 服务器日志：`logs/server.log`
 - 自动恢复日志：`logs/auto_recovery.log`
-- 修复总结：`FIX_SUMMARY.md`

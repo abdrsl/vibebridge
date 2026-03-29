@@ -5,8 +5,8 @@
 import json
 from pathlib import Path
 from typing import Dict, Any, Optional
-from app.file_sender import file_sender, send_html_to_feishu, send_temp_file_to_feishu
-from app.temp_file_manager import temp_file_manager
+from .file_sender import file_sender, send_html_to_feishu, send_temp_file_to_feishu
+from .temp_file_manager import temp_file_manager
 import asyncio
 
 

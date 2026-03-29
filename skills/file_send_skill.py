@@ -8,8 +8,8 @@ import os
 import json
 from pathlib import Path
 from typing import Dict, Any, Optional
-from app.temp_file_manager import temp_file_manager
-from app.file_sender import file_sender
+from src.legacy.temp_file_manager import temp_file_manager
+from src.legacy.file_sender import file_sender
 
 
 class FileSendSkill:

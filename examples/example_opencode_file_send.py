@@ -9,9 +9,9 @@ import asyncio
 import json
 import os
 from pathlib import Path
-from app.opencode_integration import opencode_manager
-from app.simple_skill_manager import execute_skill
-from app.temp_file_manager import temp_file_manager
+from src.legacy.opencode_integration import opencode_manager
+from src.legacy.simple_skill_manager import execute_skill
+from src.legacy.temp_file_manager import temp_file_manager
 
 
 async def example_send_html():
@@ -300,7 +300,7 @@ async def example_batch_files():
     if feishu_chat_id:
         print(f"发送文件到飞书群聊: {feishu_chat_id}")
 
-        from app.file_sender import file_sender
+        from src.legacy.file_sender import file_sender
 
         results = await file_sender.send_multiple_files(
             file_paths=temp_files,

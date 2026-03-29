@@ -7,11 +7,11 @@ import json
 from typing import Dict, Any
 from fastapi import BackgroundTasks
 
-from app.feishu_webhook_handler import (
+from .feishu_webhook_handler import (
     handle_card_action,
     handle_feishu_message,
 )
-from app.feishu_client import feishu_client
+from .feishu_client import feishu_client
 
 
 async def handle_feishu_card_interaction(

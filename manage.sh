@@ -48,7 +48,7 @@ start_server() {
     cd "$PROJECT_DIR"
     source .venv/bin/activate
     
-    nohup python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 > "$LOG_DIR/server.log" 2>&1 &
+    nohup python -m uvicorn src.main:app --host 0.0.0.0 --port 8000 > "$LOG_DIR/server.log" 2>&1 &
     echo $! > "$PID_DIR/server.pid"
     
     # 等待服务器启动
@@ -77,7 +77,7 @@ stop_server() {
     fi
     
     # 确保所有uvicorn进程都被停止
-    pkill -f "uvicorn app.main:app" 2>/dev/null
+    pkill -f "uvicorn src.main:app" 2>/dev/null
     log_info "✅ 服务器已停止"
 }
 

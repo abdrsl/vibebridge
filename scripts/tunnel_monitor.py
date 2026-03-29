@@ -17,7 +17,7 @@ from typing import Optional
 project_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(project_dir))
 
-from app.feishu_client import feishu_client
+from src.legacy.feishu_client import feishu_client
 
 
 class TunnelMonitor:

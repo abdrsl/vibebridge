@@ -17,7 +17,7 @@ if curl -s http://127.0.0.1:8000/health > /dev/null 2>&1; then
 else
     echo "   🔄 启动服务器..."
     source .venv/bin/activate
-    nohup python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 > logs/server.log 2>&1 &
+    nohup python -m uvicorn src.main:app --host 0.0.0.0 --port 8000 > logs/server.log 2>&1 &
     sleep 5
     if curl -s http://127.0.0.1:8000/health > /dev/null 2>&1; then
         echo "   ✅ 服务器启动成功"
@@ -48,7 +48,7 @@ if pgrep -f "tunnel_monitor.py" > /dev/null; then
     echo "   ✅ 监控服务已在运行"
 else
     source .venv/bin/activate
-    nohup python tunnel_monitor.py > logs/tunnel_monitor.log 2>&1 &
+    nohup python scripts/tunnel_monitor.py > logs/tunnel_monitor.log 2>&1 &
     echo "   ✅ 监控服务已启动"
 fi
 echo ""
@@ -78,7 +78,7 @@ fi
 # 进程状态
 echo ""
 echo "📊 进程:"
-echo "   服务器PID: $(pgrep -f 'uvicorn app.main:app' | head -1)"
+echo "   服务器PID: $(pgrep -f 'uvicorn src.main:app' | head -1)"
 echo "   隧道PID: $(pgrep -f 'lt --port\|ngrok http' | head -1)"
 echo "   监控PID: $(pgrep -f 'tunnel_monitor.py' | head -1)"
 

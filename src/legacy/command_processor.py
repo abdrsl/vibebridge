@@ -130,7 +130,7 @@ class CommandProcessor:
 
     async def _clear_session(self, user_id: str, chat_id: str) -> Dict[str, Any]:
         """清空当前用户的会话"""
-        from app.session_manager import get_session_manager, SessionStatus
+        from .session_manager import get_session_manager, SessionStatus
 
         session_manager = get_session_manager()
 
@@ -158,7 +158,7 @@ class CommandProcessor:
             return {"ok": False, "error": f"Model not found: {model_key}"}
 
         # 将当前模型保存到用户会话中
-        from app.session_manager import get_session_manager
+        from .session_manager import get_session_manager
 
         session_manager = get_session_manager()
 
@@ -175,7 +175,7 @@ class CommandProcessor:
     async def _git_commit(self, chat_id: str) -> Dict[str, Any]:
         """执行Git提交"""
         import asyncio
-        from app.feishu_client import feishu_client
+        from .feishu_client import feishu_client
 
         # 在后台执行Git提交
         async def do_git_commit():
@@ -253,7 +253,7 @@ class CommandProcessor:
     async def _start_server(self, chat_id: str) -> Dict[str, Any]:
         """启动服务器"""
         import asyncio
-        from app.feishu_client import feishu_client
+        from .feishu_client import feishu_client
 
         async def do_start_server():
             try:
@@ -284,7 +284,7 @@ class CommandProcessor:
                         "python",
                         "-m",
                         "uvicorn",
-                        "app.main:app",
+                        "src.main:app",
                         "--host",
                         "0.0.0.0",
                         "--port",

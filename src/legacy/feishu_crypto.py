@@ -5,7 +5,7 @@ from typing import Optional
 from Crypto.Cipher import AES
 import json
 
-from app.secure_config import get_secret
+from .secure_config import get_secret
 
 # 飞书事件订阅加密解密工具
 # 参考：https://open.feishu.cn/document/ukTMukTMukTM/uYDNxYjL2QTM24iN0EjN/event-subscription-configure-/encrypt-key-encryption-configuration

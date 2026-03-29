@@ -5,7 +5,7 @@
 
 import json
 import asyncio
-from app.feishu_card_handler import process_feishu_webhook
+from src.legacy.feishu_card_handler import process_feishu_webhook
 from fastapi import BackgroundTasks
 
 

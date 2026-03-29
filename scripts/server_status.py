@@ -14,7 +14,7 @@ import json
 print("\n📊 进程状态:")
 print("-" * 70)
 result = subprocess.run(
-    ["pgrep", "-f", "uvicorn app.main:app"], capture_output=True, text=True
+    ["pgrep", "-f", "uvicorn src.main:app"], capture_output=True, text=True
 )
 if result.stdout.strip():
     pid = result.stdout.strip().split("\n")[0]

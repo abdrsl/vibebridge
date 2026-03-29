@@ -23,8 +23,8 @@ fi
 # 安装服务
 echo "📦 安装系统服务..."
 
-cp "$PROJECT_DIR/ai-project.service" /etc/systemd/system/
-cp "$PROJECT_DIR/ai-project-tunnel.service" /etc/systemd/system/
+cp "$PROJECT_DIR/deploy/ai-project.service" /etc/systemd/system/
+cp "$PROJECT_DIR/deploy/ai-project-tunnel.service" /etc/systemd/system/
 
 # 重新加载systemd
 systemctl daemon-reload

@@ -99,7 +99,7 @@ def test_opencode_integration():
     print(f"\n5. 直接测试OpenCode执行:")
     try:
         import asyncio
-        from app.opencode_integration import opencode_manager
+        from src.legacy.opencode_integration import opencode_manager
 
         async def test_direct_opencode():
             print("   创建测试任务...")

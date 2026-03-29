@@ -26,7 +26,7 @@ try:
 except ImportError:
     print("⚠️ psutil not installed, using basic process checking")
 
-from app.feishu_client import FeishuClient
+from .feishu_client import FeishuClient
 
 PROJECT_ROOT = Path(__file__).parent.parent
 LOG_DIR = PROJECT_ROOT / "logs"

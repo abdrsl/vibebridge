@@ -7,8 +7,8 @@ from typing import Any, BinaryIO, Optional
 
 import httpx
 from dotenv import load_dotenv
-from app.secure_config import get_secret
-from app.retry_handler import retry_async
+from .secure_config import get_secret
+from .retry_handler import retry_async
 
 load_dotenv()
 

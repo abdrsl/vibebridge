@@ -7,11 +7,11 @@ import asyncio
 import json
 import os
 from pathlib import Path
-from app.session_manager import get_session_manager, SessionStatus
-from app.feishu_webhook_handler import handle_feishu_webhook
-from app.file_sender import send_html_to_feishu
-from app.temp_file_manager import temp_file_manager
-from app.simple_skill_manager import execute_skill
+from src.legacy.session_manager import get_session_manager, SessionStatus
+from src.legacy.feishu_webhook_handler import handle_feishu_webhook
+from src.legacy.file_sender import send_html_to_feishu
+from src.legacy.temp_file_manager import temp_file_manager
+from src.legacy.simple_skill_manager import execute_skill
 
 
 class MockBackgroundTasks:

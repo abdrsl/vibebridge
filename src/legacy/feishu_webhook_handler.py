@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 from fastapi import BackgroundTasks
 
-from app.feishu_client import (
+from .feishu_client import (
     feishu_client,
     build_start_card,
     build_progress_card,
@@ -19,8 +19,8 @@ from app.feishu_client import (
     build_session_continue_card,
     build_session_status_card,
 )
-from app.opencode_integration import opencode_manager, TaskStatus
-from app.session_manager import get_session_manager, SessionStatus
+from .opencode_integration import opencode_manager, TaskStatus
+from .session_manager import get_session_manager, SessionStatus
 
 
 async def handle_feishu_webhook(
@@ -74,7 +74,7 @@ async def handle_feishu_message(
     # 消息去重检查
     message_id = message.get("message_id", "")
     if message_id:
-        from app.message_deduplicator import get_deduplicator
+        from .message_deduplicator import get_deduplicator
 
         deduplicator = get_deduplicator()
 
@@ -117,7 +117,7 @@ async def handle_feishu_message(
         return await handle_session_cancel(chat_id, sender_id, background_tasks)
 
     # 检查自定义指令
-    from app.command_processor import get_command_processor
+    from .command_processor import get_command_processor
 
     command_processor = get_command_processor()
     cmd_config = command_processor.match_command(text)
@@ -799,7 +799,7 @@ async def handle_card_action(
 
     elif action in ["git_commit", "start_server"]:
         # 处理需要确认的自定义指令
-        from app.command_processor import get_command_processor
+        from .command_processor import get_command_processor
 
         command_processor = get_command_processor()
 

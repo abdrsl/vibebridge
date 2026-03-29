@@ -6,9 +6,9 @@
 import asyncio
 import os
 from pathlib import Path
-from app.temp_file_manager import temp_file_manager
-from app.file_sender import file_sender, send_html_to_feishu
-from app.simple_skill_manager import get_simple_skill_manager
+from src.legacy.temp_file_manager import temp_file_manager
+from src.legacy.file_sender import file_sender, send_html_to_feishu
+from src.legacy.simple_skill_manager import get_simple_skill_manager
 
 
 async def test_temp_file_manager():

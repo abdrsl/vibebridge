@@ -6,8 +6,8 @@
 import asyncio
 import json
 from datetime import datetime
-from app.session_manager import get_session_manager, SessionStatus
-from app.feishu_webhook_handler import (
+from src.legacy.session_manager import get_session_manager, SessionStatus
+from src.legacy.feishu_webhook_handler import (
     handle_feishu_message,
     handle_session_status,
     handle_session_cancel,

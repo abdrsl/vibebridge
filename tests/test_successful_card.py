@@ -5,9 +5,9 @@
 
 import json
 import asyncio
-from app.feishu_card_handler import process_feishu_webhook
+from src.legacy.feishu_card_handler import process_feishu_webhook
 from fastapi import BackgroundTasks
-from app.session_manager import get_session_manager, SessionStatus
+from src.legacy.session_manager import get_session_manager, SessionStatus
 
 
 class MockBackgroundTasks:

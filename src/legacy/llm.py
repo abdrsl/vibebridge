@@ -2,7 +2,7 @@ import os
 
 from dotenv import load_dotenv
 from openai import OpenAI
-from app.secure_config import get_secret
+from .secure_config import get_secret
 
 load_dotenv()
 

@@ -3,7 +3,7 @@
 """
 
 import json
-from app.task_parser import extract_text_from_feishu_payload
+from src.legacy.task_parser import extract_text_from_feishu_payload
 
 
 class TestTaskParser:

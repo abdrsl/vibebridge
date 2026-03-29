@@ -6,7 +6,7 @@
 import asyncio
 import os
 from pathlib import Path
-from app.file_sender import file_sender
+from src.legacy.file_sender import file_sender
 
 
 async def send_existing_html():

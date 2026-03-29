@@ -144,7 +144,7 @@ ssh -o ServerAliveInterval=60 -R 80:localhost:8000 nokey@localhost.run
 tmux new -s feishu-server
 cd /home/user/workspace/ai-project
 source .venv/bin/activate
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+uvicorn src.main:app --host 0.0.0.0 --port 8000
 # 按Ctrl+B，然后按D分离会话
 ```
 

@@ -4,8 +4,8 @@ from typing import Optional, Union
 import tempfile
 import os
 
-from app.feishu_client import feishu_client
-from app.temp_file_manager import temp_file_manager
+from .feishu_client import feishu_client
+from .temp_file_manager import temp_file_manager
 
 
 class FileSender:
