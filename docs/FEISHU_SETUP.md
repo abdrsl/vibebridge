@@ -8,7 +8,8 @@
 - **Webhook Endpoint**: `https://unmobilized-virgen-mitotically.ngrok-free.dev/feishu/webhook/opencode`
 - **Response Time**: ~1.9-2.0 seconds (within Feishu's 3-second limit)
 - **Encryption**: **ENABLED** (Using provided encryption key and verification token)
-- **Status**: **FULLY OPERATIONAL** ✅ (URL verification successful + Live message processing verified)
+- **Encryption Test**: **PASSED** ✅ (Encryption/decryption and signature verification tested)
+- **Status**: **FULLY OPERATIONAL** ✅ (URL verification successful + Live message processing verified + Encryption tested)
 
 ## ✅ Live Test Results
 
