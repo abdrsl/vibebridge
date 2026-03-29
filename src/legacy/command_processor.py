@@ -22,7 +22,7 @@ class CommandProcessor:
         """
         if config_path is None:
             # 默认配置文件路径
-            project_dir = Path(__file__).parent.parent
+            project_dir = Path(__file__).parent.parent.parent
             config_path = project_dir / "config" / "commands.json"
 
         self.config_path: Path = Path(config_path) if config_path else Path(".")
@@ -122,6 +122,8 @@ class CommandProcessor:
                 return await self._git_commit(chat_id)
             elif action == "start_server":
                 return await self._start_server(chat_id)
+            elif action == "show_models":
+                return await self._show_models()
             else:
                 return {"ok": False, "error": f"Unknown action: {action}"}
         except Exception as e:
@@ -332,6 +334,28 @@ class CommandProcessor:
             "action": "start_server",
             "message": "服务器启动任务已启动，请稍候...",
         }
+
+    async def _show_models(self) -> Dict[str, Any]:
+        """显示可用模型"""
+        if not self.models:
+            return {"ok": True, "message": "🤖 当前没有配置任何模型"}
+
+        model_list = []
+        for model_key, model_config in self.models.items():
+            name = model_config.get("name", model_key)
+            provider = model_config.get("provider", "未知")
+            model_id = model_config.get("model_id", "")
+            env_var = model_config.get("api_key_env", "")
+            has_key = bool(os.getenv(env_var)) if env_var else False
+            status = "✅" if has_key else "⚠️"
+            model_list.append(f"{status} **{name}** (`{model_key}`)")
+            model_list.append(f"   - 供应商: {provider}")
+            if model_id:
+                model_list.append(f"   - 模型ID: {model_id}")
+            model_list.append("")
+
+        message = "🤖 **可用模型列表**\n\n" + "\n".join(model_list)
+        return {"ok": True, "message": message}
 
     def add_command(self, name: str, config: Dict[str, Any]):
         """添加新指令"""

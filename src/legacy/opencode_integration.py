@@ -250,12 +250,14 @@ class OpenCodeManager:
                                 else:
                                     display = f"🛠️ {tool}: {str(input_data)[:100]}"
                                 task.output_lines.append(display)
+                                yield {"type": "tool_use", "content": display}
 
                             elif event_type == "text":
                                 part = event.get("part", {})
                                 text = part.get("text", "")
                                 if text:
                                     task.output_lines.append(text)
+                                    yield {"type": "text", "content": text}
 
                             elif event_type == "error":
                                 error_msg = event.get("message", "Unknown error")

@@ -332,16 +332,48 @@ async def run_opencode_with_feishu(task_id: str, notify: bool = True):
         # Collect events
         final_result = None
         error_result = None
+        tool_count = 0
+        latest_output = ""
+        last_progress_time = 0
+        PROGRESS_INTERVAL = 5  # seconds
 
         async for event in opencode_manager.run_opencode(task_id):
             event_type = event.get("type", "")
             content = event.get("content", "")
             print(f"[OpenCode] Event: {event_type} - {content[:50]}...")
 
-            if event_type == "done":
+            if event_type == "tool_use":
+                tool_count += 1
+                latest_output = content[:200] if content else "正在执行操作..."
+            elif event_type == "text":
+                latest_output = content[:200] if content else "正在生成文本..."
+            elif event_type == "status":
+                latest_output = content[:200] if content else "正在启动..."
+            elif event_type == "done":
                 final_result = content
             elif event_type == "error":
                 error_result = content
+
+            # Send progress updates if enough time has passed
+            current_time = time.time()
+            if (
+                notify
+                and task.feishu_chat_id
+                and event_type in ("tool_use", "text", "status")
+                and current_time - last_progress_time > PROGRESS_INTERVAL
+            ):
+                # Fallback if latest_output empty
+                display_output = (
+                    latest_output if latest_output else "OpenCode 正在处理..."
+                )
+                progress_card = build_progress_card(
+                    task_id, "running", display_output, tool_count
+                )
+                result = await feishu_client.send_interactive_card(
+                    task.feishu_chat_id, progress_card
+                )
+                print(f"[OpenCode] Progress card sent: {result}")
+                last_progress_time = current_time
 
         # Send result after completion
         if notify and task.feishu_chat_id:
