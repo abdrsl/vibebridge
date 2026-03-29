@@ -56,7 +56,7 @@ class ConstitutionalRule:
 class Constitution:
     """Collection of constitutional rules."""
 
-    name: str = "AI Product Lab Constitution"
+    name: str = "OpenCode-Feishu Bridge Constitution"
     version: str = "1.0"
     rules: List[ConstitutionalRule] = field(default_factory=list)
 

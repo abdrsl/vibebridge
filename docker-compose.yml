@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  ai-project-lab:
+  opencode-feishu-bridge-lab:
     build: .
     ports:
       - "8000:8000"

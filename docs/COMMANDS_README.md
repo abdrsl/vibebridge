@@ -13,7 +13,7 @@
 ## 📁 文件说明
 
 ```
-/home/user/workspace/ai-project/
+/home/user/workspace/opencode-feishu-bridge/
 ├── config/
 │   └── commands.json           # 指令配置文件（永久有效）
 ├── app/
@@ -39,7 +39,7 @@
 ### 方式2: 管理指令（添加/删除/修改）
 
 ```bash
-cd /home/user/workspace/ai-project
+cd /home/user/workspace/opencode-feishu-bridge
 
 # 查看所有指令
 python manage_commands.py list
@@ -129,7 +129,7 @@ python manage_commands.py add
 
 ```bash
 # 编辑配置文件
-nano /home/user/workspace/ai-project/config/commands.json
+nano /home/user/workspace/opencode-feishu-bridge/config/commands.json
 ```
 
 添加：
@@ -197,7 +197,7 @@ nano /home/user/workspace/ai-project/config/commands.json
 
 1. 检查配置文件是否存在：
    ```bash
-   cat /home/user/workspace/ai-project/config/commands.json
+   cat /home/user/workspace/opencode-feishu-bridge/config/commands.json
    ```
 
 2. 检查服务器是否重启（加载新配置）：
@@ -207,7 +207,7 @@ nano /home/user/workspace/ai-project/config/commands.json
 
 3. 查看日志：
    ```bash
-   tail -f /home/user/workspace/ai-project/logs/server.log | grep -E "(Command|指令)"
+   tail -f /home/user/workspace/opencode-feishu-bridge/logs/server.log | grep -E "(Command|指令)"
    ```
 
 ### 修改后不生效

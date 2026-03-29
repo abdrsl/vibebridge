@@ -66,7 +66,7 @@ class CommandProcessor:
             self.config_path.parent.mkdir(parents=True, exist_ok=True)
             config = {
                 "version": "1.0",
-                "description": "AI Project Lab 自定义指令配置",
+                "description": "OpenCode-Feishu Bridge 自定义指令配置",
                 "commands": self.commands,
                 "models": self.models,
             }
@@ -303,7 +303,7 @@ class CommandProcessor:
                     [
                         "bash",
                         "-c",
-                        "cd /home/user/workspace/ai-project && "
+                        "cd /home/user/workspace/opencode-feishu-bridge && "
                         "source .venv/bin/activate && "
                         "python -m uvicorn src.main:app --host 0.0.0.0 --port 8000",
                     ],

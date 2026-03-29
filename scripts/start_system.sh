@@ -1,5 +1,5 @@
 #!/bin/bash
-# Start system script for AI Product Lab
+# Start system script for OpenCode-Feishu Bridge
 # Starts FastAPI server and tunnel manager
 
 set -euo pipefail
@@ -81,7 +81,7 @@ case "${1:-start}" in
             fi
         fi
         
-        info "Starting AI Product Lab system..."
+        info "Starting OpenCode-Feishu Bridge system..."
         
         # Start FastAPI server
         info "Starting FastAPI server..."

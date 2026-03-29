@@ -1,4 +1,4 @@
-# AI Product Lab Multi-Agent System
+# OpenCode-Feishu Bridge Multi-Agent System
 
 一个基于FastAPI的AI编程代理服务，采用模块化多智能体架构，集成飞书和OpenCode CLI。
 

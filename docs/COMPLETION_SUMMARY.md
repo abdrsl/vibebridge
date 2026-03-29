@@ -1,4 +1,4 @@
-# 🎉 AI Project Lab - 完整功能实现总结
+# 🎉 OpenCode-Feishu Bridge - 完整功能实现总结
 
 ## ✅ 所有功能已完成
 
@@ -104,7 +104,7 @@ OpenCode任务 → 后台执行
 ## 📁 项目结构
 
 ```
-/home/user/workspace/ai-project/
+/home/user/workspace/opencode-feishu-bridge/
 ├── app/
 │   ├── main.py                    # FastAPI主入口
 │   ├── feishu_webhook_handler.py  # Webhook处理器
@@ -137,7 +137,7 @@ OpenCode任务 → 后台执行
 ### 1. 一键启动
 
 ```bash
-cd /home/user/workspace/ai-project
+cd /home/user/workspace/opencode-feishu-bridge
 ./start_all.sh
 ```
 
@@ -235,4 +235,4 @@ tail -f logs/cron.log
 
 **生产就绪！** 🚀
 
-所有代码、配置和文档都已保存在 `/home/user/workspace/ai-project/`，永久有效。
+所有代码、配置和文档都已保存在 `/home/user/workspace/opencode-feishu-bridge/`，永久有效。

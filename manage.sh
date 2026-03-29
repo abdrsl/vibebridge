@@ -1,9 +1,9 @@
 #!/bin/bash
 #
-# AI Project Lab 用户级自动启动脚本
+# OpenCode-Feishu Bridge 用户级自动启动脚本
 # 无需root权限，使用nohup实现后台运行
 
-PROJECT_DIR="/home/user/workspace/ai-project"
+PROJECT_DIR="/home/user/workspace/opencode-feishu-bridge"
 LOG_DIR="$PROJECT_DIR/logs"
 PID_DIR="$LOG_DIR/pids"
 
@@ -191,7 +191,7 @@ stop_tunnel() {
 # 显示状态
 show_status() {
     echo "=========================================="
-    echo "AI Project Lab 状态"
+    echo "OpenCode-Feishu Bridge 状态"
     echo "=========================================="
     echo ""
     
@@ -236,7 +236,7 @@ restart() {
 show_menu() {
     echo ""
     echo "=========================================="
-    echo "AI Project Lab 管理菜单"
+    echo "OpenCode-Feishu Bridge 管理菜单"
     echo "=========================================="
     echo ""
     echo "1) 启动服务"

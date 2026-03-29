@@ -1,4 +1,4 @@
-# AGENTS.md - AI Product Lab Multi-Agent Architecture
+# AGENTS.md - OpenCode-Feishu Bridge Multi-Agent Architecture
 
 ## Project Overview
 

@@ -169,7 +169,7 @@ namer = SessionNamer(config)
 
 Run skill tests:
 ```bash
-cd /home/user/workspace/ai-project
+cd /home/user/workspace/opencode-feishu-bridge
 source .venv/bin/activate
 
 # Test constitution

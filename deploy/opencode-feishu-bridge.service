@@ -1,0 +1,17 @@
+[Unit]
+Description=AI Project Lab Server
+After=network.target
+
+[Service]
+Type=simple
+User=akliedrak
+WorkingDirectory=/home/user/workspace/opencode-feishu-bridge
+Environment=PATH=/home/user/workspace/opencode-feishu-bridge/.venv/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/home/user/workspace/opencode-feishu-bridge/.venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=5
+StandardOutput=append:/home/user/workspace/opencode-feishu-bridge/logs/server.log
+StandardError=append:/home/user/workspace/opencode-feishu-bridge/logs/server.log
+
+[Install]
+WantedBy=multi-user.target

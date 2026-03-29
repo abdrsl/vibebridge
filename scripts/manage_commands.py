@@ -178,7 +178,7 @@ def edit_command(config):
 def show_help():
     """显示帮助"""
     print("""
-📖 AI Project Lab 自定义指令管理工具
+📖 OpenCode-Feishu Bridge 自定义指令管理工具
 
 用法: python manage_commands.py [命令]
 

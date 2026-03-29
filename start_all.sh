@@ -1,12 +1,12 @@
 #!/bin/bash
 #
-# AI Project Lab 完整启动脚本
+# OpenCode-Feishu Bridge 完整启动脚本
 # 启动服务器、隧道和监控服务
 
-cd /home/user/workspace/ai-project
+cd /home/user/workspace/opencode-feishu-bridge
 
 echo "=========================================="
-echo "🚀 AI Project Lab 完整启动"
+echo "🚀 OpenCode-Feishu Bridge 完整启动"
 echo "=========================================="
 echo ""
 

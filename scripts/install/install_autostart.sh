@@ -1,11 +1,11 @@
 #!/bin/bash
 #
-# 安装AI Project Lab自动启动
+# 安装OpenCode-Feishu Bridge自动启动
 
-PROJECT_DIR="/home/user/workspace/ai-project"
+PROJECT_DIR="/home/user/workspace/opencode-feishu-bridge"
 
 echo "=========================================="
-echo "安装 AI Project Lab 自动启动"
+echo "安装 OpenCode-Feishu Bridge 自动启动"
 echo "=========================================="
 echo ""
 
@@ -22,7 +22,7 @@ install_crontab() {
     fi
     
     # 添加到crontab
-    (crontab -l 2>/dev/null; echo ""; echo "# AI Project Lab自动启动"; echo "* * * * * cd $PROJECT_DIR && flock -n /tmp/ai-project-autostart.lock -c './manage.sh start' >> $PROJECT_DIR/logs/cron.log 2>&1") | crontab -
+    (crontab -l 2>/dev/null; echo ""; echo "# OpenCode-Feishu Bridge自动启动"; echo "* * * * * cd $PROJECT_DIR && flock -n /tmp/opencode-feishu-bridge-autostart.lock -c './manage.sh start' >> $PROJECT_DIR/logs/cron.log 2>&1") | crontab -
     
     echo "✅ 已添加到crontab"
     echo "   每分钟检查服务器状态"
@@ -74,7 +74,7 @@ create_shortcuts() {
     if ! grep -q "aip-start()" ~/.bashrc 2>/dev/null; then
         cat >> ~/.bashrc << EOF
 
-# AI Project Lab 快捷命令
+# OpenCode-Feishu Bridge 快捷命令
 aip-start() { cd $PROJECT_DIR && ./manage.sh start; }
 aip-stop() { cd $PROJECT_DIR && ./manage.sh stop; }
 aip-restart() { cd $PROJECT_DIR && ./manage.sh restart; }

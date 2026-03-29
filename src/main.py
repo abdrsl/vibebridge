@@ -1,5 +1,5 @@
 """
-AI Project Lab - Main FastAPI application with multi-agent architecture.
+OpenCode-Feishu Bridge - Main FastAPI application with multi-agent architecture.
 """
 
 import asyncio
@@ -69,7 +69,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="AI Project Lab - Multi-Agent System",
+    title="OpenCode-Feishu Bridge - Multi-Agent System",
     version="1.0.0",
     description="Open-source AI coding agent service with Feishu integration",
     lifespan=lifespan,
@@ -104,7 +104,7 @@ app.add_middleware(
 def root():
     """Root endpoint."""
     return {
-        "name": "AI Project Lab",
+        "name": "OpenCode-Feishu Bridge",
         "version": "1.0.0",
         "status": "ok",
         "architecture": "multi-agent",

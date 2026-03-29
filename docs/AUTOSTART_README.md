@@ -1,4 +1,4 @@
-# AI Project Lab 自动启动和隧道切换系统
+# OpenCode-Feishu Bridge 自动启动和隧道切换系统
 
 ## 🎯 功能特性
 
@@ -23,7 +23,7 @@
 ### 方法1: 使用crontab（推荐，无需root）
 
 ```bash
-cd /home/user/workspace/ai-project
+cd /home/user/workspace/opencode-feishu-bridge
 ./install_autostart.sh
 # 选择 1) 使用crontab
 ```
@@ -31,7 +31,7 @@ cd /home/user/workspace/ai-project
 ### 方法2: 使用systemd（需要root）
 
 ```bash
-cd /home/user/workspace/ai-project
+cd /home/user/workspace/opencode-feishu-bridge
 sudo ./install_autostart.sh
 # 选择 2) 使用systemd
 ```
@@ -39,7 +39,7 @@ sudo ./install_autostart.sh
 ### 方法3: 仅创建快捷命令
 
 ```bash
-cd /home/user/workspace/ai-project
+cd /home/user/workspace/opencode-feishu-bridge
 ./install_autostart.sh shortcuts
 source ~/.bashrc
 ```
@@ -49,7 +49,7 @@ source ~/.bashrc
 ### 方式1: 管理脚本（推荐）
 
 ```bash
-cd /home/user/workspace/ai-project
+cd /home/user/workspace/opencode-feishu-bridge
 ./manage.sh
 ```
 
@@ -103,7 +103,7 @@ aip-tunnel     # 启动隧道
 输出示例：
 ```
 ==========================================
-AI Project Lab 状态
+OpenCode-Feishu Bridge 状态
 ==========================================
 
 ✅ 服务器: 运行中
@@ -147,19 +147,19 @@ AI Project Lab 状态
 ### 当前URL查看
 
 ```bash
-cat /home/user/workspace/ai-project/logs/current_tunnel_url.txt
+cat /home/user/workspace/opencode-feishu-bridge/logs/current_tunnel_url.txt
 ```
 
 ## 📁 文件说明
 
 ```
-/home/user/workspace/ai-project/
+/home/user/workspace/opencode-feishu-bridge/
 ├── auto_recovery.sh        # 自动恢复脚本（底层）
 ├── manage.sh               # 管理脚本（推荐）
 ├── install_autostart.sh    # 安装脚本
 ├── install_services.sh     # systemd服务安装
-├── ai-project.service      # systemd主服务
-├── ai-project-tunnel.service  # systemd隧道服务
+├── opencode-feishu-bridge.service      # systemd主服务
+├── opencode-feishu-bridge-tunnel.service  # systemd隧道服务
 ├── crontab.config          # crontab配置示例
 ├── logs/
 │   ├── server.log          # 服务器日志
@@ -177,13 +177,13 @@ cat /home/user/workspace/ai-project/logs/current_tunnel_url.txt
 
 ```bash
 # 检查日志
-tail -100 /home/user/workspace/ai-project/logs/server.log
+tail -100 /home/user/workspace/opencode-feishu-bridge/logs/server.log
 
 # 检查端口占用
 lsof -i :8000
 
 # 手动启动查看错误
-cd /home/user/workspace/ai-project
+cd /home/user/workspace/opencode-feishu-bridge
 source .venv/bin/activate
 python -m uvicorn src.main:app --host 0.0.0.0 --port 8000
 ```
@@ -195,10 +195,10 @@ python -m uvicorn src.main:app --host 0.0.0.0 --port 8000
 curl http://127.0.0.1:4040/api/tunnels
 
 # 检查localtunnel
-cat /home/user/workspace/ai-project/logs/localtunnel.log
+cat /home/user/workspace/opencode-feishu-bridge/logs/localtunnel.log
 
 # 手动启动隧道测试
-cd /home/user/workspace/ai-project
+cd /home/user/workspace/opencode-feishu-bridge
 ngrok http 8000
 # 或
 lt --port 8000
@@ -208,10 +208,10 @@ lt --port 8000
 
 ```bash
 # 确保脚本可执行
-chmod +x /home/user/workspace/ai-project/*.sh
+chmod +x /home/user/workspace/opencode-feishu-bridge/*.sh
 
 # 检查PID目录权限
-mkdir -p /home/user/workspace/ai-project/logs/pids
+mkdir -p /home/user/workspace/opencode-feishu-bridge/logs/pids
 ```
 
 ## 📝 手动配置crontab
@@ -225,8 +225,8 @@ crontab -e
 添加以下内容：
 
 ```cron
-# AI Project Lab自动启动
-* * * * * cd /home/user/workspace/ai-project && flock -n /tmp/ai-project-autostart.lock -c './manage.sh start' >> /home/user/workspace/ai-project/logs/cron.log 2>&1
+# OpenCode-Feishu Bridge自动启动
+* * * * * cd /home/user/workspace/opencode-feishu-bridge && flock -n /tmp/opencode-feishu-bridge-autostart.lock -c './manage.sh start' >> /home/user/workspace/opencode-feishu-bridge/logs/cron.log 2>&1
 ```
 
 ## 🔄 更新和卸载
@@ -234,7 +234,7 @@ crontab -e
 ### 更新脚本
 
 ```bash
-cd /home/user/workspace/ai-project
+cd /home/user/workspace/opencode-feishu-bridge
 git pull  # 如果有git仓库
 # 或者手动替换脚本
 ```
@@ -258,7 +258,7 @@ sudo systemctl daemon-reload
 ### 完全清理
 
 ```bash
-cd /home/user/workspace/ai-project
+cd /home/user/workspace/opencode-feishu-bridge
 ./manage.sh stop
 rm -f logs/current_tunnel_url.txt
 rm -f logs/current_tunnel_type.txt
@@ -276,12 +276,12 @@ rm -rf logs/pids
 
 3. **监控实时日志**：
    ```bash
-   tail -f /home/user/workspace/ai-project/logs/server.log
+   tail -f /home/user/workspace/opencode-feishu-bridge/logs/server.log
    ```
 
 4. **定期检查**自动恢复日志：
    ```bash
-   tail -f /home/user/workspace/ai-project/logs/auto_recovery.log
+   tail -f /home/user/workspace/opencode-feishu-bridge/logs/auto_recovery.log
    ```
 
 5. **服务器重启后**，服务会自动启动（如果安装了自动启动）

@@ -58,7 +58,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Embrace AI Product Lab",
+    title="Embrace OpenCode-Feishu Bridge",
     version="0.1.0",
     lifespan=lifespan,
 )
@@ -90,7 +90,7 @@ app.add_middleware(
 @limiter.exempt
 def root():
     return {
-        "name": "Embrace AI Product Lab",
+        "name": "Embrace OpenCode-Feishu Bridge",
         "status": "ok",
     }
 

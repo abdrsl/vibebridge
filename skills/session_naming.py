@@ -118,7 +118,7 @@ class SessionNamingConfig:
                 prefix="如何: ",
                 max_length=30,
             ),
-            # Project specific (AI Product Lab)
+            # Project specific (OpenCode-Feishu Bridge)
             SessionNamingRule(
                 name="feishu_integration",
                 pattern=r"(?:飞书|Feishu|feishu)\s*(?:集成|integration|连接|connect)",

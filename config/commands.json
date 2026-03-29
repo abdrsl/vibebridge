@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "description": "AI Project Lab 自定义指令配置",
+  "description": "OpenCode-Feishu Bridge 自定义指令配置",
   "commands": {
     "清空session": {
       "action": "clear_session",

@@ -1,13 +1,13 @@
 #!/bin/bash
 #
-# AI Project Lab 自动监控和恢复脚本
+# OpenCode-Feishu Bridge 自动监控和恢复脚本
 # 功能:
 # 1. 监控服务器状态，停止时自动重启
 # 2. 监控隧道状态，不可用时自动切换
 # 3. 记录日志
 
 # 配置
-PROJECT_DIR="/home/user/workspace/ai-project"
+PROJECT_DIR="/home/user/workspace/opencode-feishu-bridge"
 LOG_FILE="$PROJECT_DIR/logs/auto_recovery.log"
 PID_FILE="$PROJECT_DIR/logs/auto_recovery.pid"
 SERVER_PORT=8000
@@ -397,7 +397,7 @@ show_status() {
 
 # 显示帮助
 show_help() {
-    echo "AI Project Lab 自动监控脚本"
+    echo "OpenCode-Feishu Bridge 自动监控脚本"
     echo ""
     echo "用法: $0 [命令]"
     echo ""

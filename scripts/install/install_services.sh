@@ -1,15 +1,15 @@
 #!/bin/bash
 #
-# AI Project Lab 服务安装脚本
+# OpenCode-Feishu Bridge 服务安装脚本
 # 安装systemd服务实现自动启动和监控
 
 set -e
 
-PROJECT_DIR="/home/user/workspace/ai-project"
+PROJECT_DIR="/home/user/workspace/opencode-feishu-bridge"
 SERVICE_USER="akliedrak"
 
 echo "=========================================="
-echo "AI Project Lab 服务安装"
+echo "OpenCode-Feishu Bridge 服务安装"
 echo "=========================================="
 echo ""
 
@@ -23,8 +23,8 @@ fi
 # 安装服务
 echo "📦 安装系统服务..."
 
-cp "$PROJECT_DIR/deploy/ai-project.service" /etc/systemd/system/
-cp "$PROJECT_DIR/deploy/ai-project-tunnel.service" /etc/systemd/system/
+cp "$PROJECT_DIR/deploy/opencode-feishu-bridge.service" /etc/systemd/system/
+cp "$PROJECT_DIR/deploy/opencode-feishu-bridge-tunnel.service" /etc/systemd/system/
 
 # 重新加载systemd
 systemctl daemon-reload
@@ -36,22 +36,22 @@ echo ""
 # 启动服务
 echo "🚀 启动服务..."
 
-systemctl enable ai-project.service
-systemctl start ai-project.service
+systemctl enable opencode-feishu-bridge.service
+systemctl start opencode-feishu-bridge.service
 
 sleep 3
 
-if systemctl is-active --quiet ai-project.service; then
+if systemctl is-active --quiet opencode-feishu-bridge.service; then
     echo "✅ 主服务已启动"
 else
     echo "❌ 主服务启动失败"
-    echo "查看日志: journalctl -u ai-project.service"
+    echo "查看日志: journalctl -u opencode-feishu-bridge.service"
     exit 1
 fi
 
 # 启动隧道服务
-systemctl enable ai-project-tunnel.service
-systemctl start ai-project-tunnel.service
+systemctl enable opencode-feishu-bridge-tunnel.service
+systemctl start opencode-feishu-bridge-tunnel.service
 
 echo ""
 echo "=========================================="
@@ -59,18 +59,18 @@ echo "✅ 安装完成！"
 echo "=========================================="
 echo ""
 echo "服务状态:"
-echo "  主服务:   systemctl status ai-project.service"
-echo "  隧道服务: systemctl status ai-project-tunnel.service"
+echo "  主服务:   systemctl status opencode-feishu-bridge.service"
+echo "  隧道服务: systemctl status opencode-feishu-bridge-tunnel.service"
 echo ""
 echo "查看日志:"
-echo "  主服务:   journalctl -u ai-project.service -f"
-echo "  隧道服务: journalctl -u ai-project-tunnel.service -f"
+echo "  主服务:   journalctl -u opencode-feishu-bridge.service -f"
+echo "  隧道服务: journalctl -u opencode-feishu-bridge-tunnel.service -f"
 echo ""
 echo "常用命令:"
-echo "  启动:   sudo systemctl start ai-project.service"
-echo "  停止:   sudo systemctl stop ai-project.service"
-echo "  重启:   sudo systemctl restart ai-project.service"
-echo "  查看状态: sudo systemctl status ai-project.service"
+echo "  启动:   sudo systemctl start opencode-feishu-bridge.service"
+echo "  停止:   sudo systemctl stop opencode-feishu-bridge.service"
+echo "  重启:   sudo systemctl restart opencode-feishu-bridge.service"
+echo "  查看状态: sudo systemctl status opencode-feishu-bridge.service"
 echo ""
 echo "当前URL:"
 sleep 2
@@ -88,18 +88,18 @@ echo "创建快捷命令..."
 cat > /usr/local/bin/aip-status << 'EOF'
 #!/bin/bash
 echo "=========================================="
-echo "AI Project Lab 状态"
+echo "OpenCode-Feishu Bridge 状态"
 echo "=========================================="
 echo ""
 echo "主服务:"
-systemctl status ai-project.service --no-pager -l | head -10
+systemctl status opencode-feishu-bridge.service --no-pager -l | head -10
 echo ""
 echo "隧道服务:"
-systemctl status ai-project-tunnel.service --no-pager -l | head -10
+systemctl status opencode-feishu-bridge-tunnel.service --no-pager -l | head -10
 echo ""
 echo "当前URL:"
-if [ -f /home/user/workspace/ai-project/logs/current_tunnel_url.txt ]; then
-    cat /home/user/workspace/ai-project/logs/current_tunnel_url.txt
+if [ -f /home/user/workspace/opencode-feishu-bridge/logs/current_tunnel_url.txt ]; then
+    cat /home/user/workspace/opencode-feishu-bridge/logs/current_tunnel_url.txt
 fi
 echo ""
 echo "=========================================="
@@ -108,13 +108,13 @@ chmod +x /usr/local/bin/aip-status
 
 cat > /usr/local/bin/aip-log << 'EOF'
 #!/bin/bash
-journalctl -u ai-project.service -f
+journalctl -u opencode-feishu-bridge.service -f
 EOF
 chmod +x /usr/local/bin/aip-log
 
 cat > /usr/local/bin/aip-restart << 'EOF'
 #!/bin/bash
-sudo systemctl restart ai-project.service ai-project-tunnel.service
+sudo systemctl restart opencode-feishu-bridge.service opencode-feishu-bridge-tunnel.service
 echo "✅ 服务已重启"
 EOF
 chmod +x /usr/local/bin/aip-restart
