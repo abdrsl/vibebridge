@@ -1,0 +1,7 @@
+{
+  "version": "1.0",
+  "feishu_mode": "webhook",
+  "websocket_enabled": false,
+  "last_updated": "2026-04-01T04:09:47.735850",
+  "description": "OpenCode-Feishu Bridge 系统配置"
+}

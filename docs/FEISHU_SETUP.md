@@ -273,3 +273,61 @@ grep "serveousercontent" logs/serveo.log | grep -o "https://[^ ]*" | head -1
 - `src/legacy/task_store.py` - JSON file-based task storage
 - `TUNNEL_SETUP.md` - Detailed tunnel comparison guide
 - `start_ngrok.sh` - Ngrok setup script
+
+## 🔌 Feishu WebSocket 长连接配置（实验性）
+
+### 概述
+Feishu WebSocket 长连接提供了比传统Webhook更实时、更稳定的消息接收方式。此功能为实验性功能，需要飞书事件订阅2.0支持。
+
+### 启用步骤
+
+1. **更新环境配置** (`.env`文件):
+   ```bash
+   # 启用WebSocket长连接
+   FEISHU_WEBSOCKET_ENABLED=true
+   
+   # WebSocket服务器URL（请参考飞书官方文档更新）
+   FEISHU_WEBSOCKET_URL=wss://open.feishu.cn/stream
+   ```
+
+2. **重启服务器**:
+   ```bash
+   ./manage.sh restart
+   ```
+
+3. **验证连接**:
+   - 检查服务器日志中是否有WebSocket连接成功信息
+   - 运行测试脚本: `python tests/test_websocket.py`
+
+### 注意事项
+
+⚠️ **重要提示**:
+- WebSocket URL可能需要根据飞书官方文档更新
+- 需要飞书事件订阅2.0权限
+- 与Webhook模式可以共存，但建议只启用一种
+- 当前为实验性实现，生产环境请充分测试
+
+### 技术实现
+
+- **核心文件**: `src/feishu_websocket.py`
+- **集成点**: `src/main.py` 中的lifespan管理
+- **消息处理**: 复用现有的 `feishu_webhook_handler.py` 和 `feishu_card_handler.py`
+
+### 故障排除
+
+1. **连接失败**:
+   - 检查访问令牌是否有效
+   - 验证WebSocket URL是否正确
+   - 查看飞书官方事件订阅2.0文档
+
+2. **消息未处理**:
+   - 确保飞书应用有相应的事件订阅权限
+   - 检查WebSocket消息格式是否符合预期
+
+3. **性能问题**:
+   - 调整 `ping_interval` 和 `reconnect_interval` 参数
+   - 监控连接稳定性
+
+### 相关文档
+- [飞书事件订阅2.0文档](https://open.feishu.cn/document/ukTMukTMukTM/uYDNxYjL2QTM24iN0EjN/event-subscription-configure-/event-subscription-2-0)
+- [WebSocket客户端测试](tests/test_websocket.py)

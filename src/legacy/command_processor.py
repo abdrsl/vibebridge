@@ -8,6 +8,7 @@ import os
 import subprocess
 from typing import Dict, Any, Optional, Union
 from pathlib import Path
+from .config_manager import get_config_manager
 
 
 class CommandProcessor:
@@ -124,6 +125,11 @@ class CommandProcessor:
                 return await self._start_server(chat_id)
             elif action == "show_models":
                 return await self._show_models()
+            elif action == "greeting":
+                return await self._greeting()
+            elif action == "switch_feishu_mode":
+                mode = cmd_config.get("mode", "websocket")
+                return await self._switch_feishu_mode(mode, chat_id)
             else:
                 return {"ok": False, "error": f"Unknown action: {action}"}
         except Exception as e:
@@ -175,7 +181,7 @@ class CommandProcessor:
         }
 
     async def _git_commit(self, chat_id: str) -> Dict[str, Any]:
-        """执行Git提交"""
+        """执行Git提交 - 带实时CLI输出显示"""
         import asyncio
         from .feishu_client import feishu_client
 
@@ -184,63 +190,190 @@ class CommandProcessor:
             try:
                 project_dir = Path(__file__).parent.parent
 
-                # 发送开始消息
-                await feishu_client.send_text_message(chat_id, "🚀 开始执行Git提交...")
+                # 发送开始消息 - 情感化
+                await feishu_client.send_text_message(
+                    chat_id, "🚀 **Git提交小分队出发！**\n准备将代码送上太空～"
+                )
+                await asyncio.sleep(0.3)
 
-                # 执行Git命令
+                # 执行Git命令，带实时输出
                 commands = [
-                    ["git", "add", "."],
-                    ["git", "status"],
-                    [
-                        "git",
-                        "commit",
-                        "-m",
-                        f"Update from Feishu bot - {subprocess.check_output(['date', '+%Y-%m-%d %H:%M:%S']).decode().strip()}",
-                    ],
-                    ["git", "push"],
+                    {"cmd": ["git", "add", "."], "name": "添加文件", "emoji": "📦"},
+                    {"cmd": ["git", "status"], "name": "检查状态", "emoji": "🔍"},
+                    {
+                        "cmd": [
+                            "git",
+                            "commit",
+                            "-m",
+                            f"Update from Feishu bot - {subprocess.check_output(['date', '+%Y-%m-%d %H:%M:%S']).decode().strip()}",
+                        ],
+                        "name": "创建提交",
+                        "emoji": "💾",
+                    },
+                    {"cmd": ["git", "push"], "name": "推送代码", "emoji": "🚀"},
                 ]
 
                 results = []
-                for cmd in commands:
-                    result = subprocess.run(
-                        cmd, cwd=project_dir, capture_output=True, text=True, timeout=60
+                for i, cmd_info in enumerate(commands):
+                    cmd = cmd_info["cmd"]
+                    step_name = cmd_info["name"]
+                    emoji = cmd_info["emoji"]
+
+                    # 发送步骤开始消息
+                    await feishu_client.send_text_message(
+                        chat_id,
+                        f"{emoji} **步骤 {i + 1}/{len(commands)}: {step_name}**",
                     )
+                    await asyncio.sleep(0.2)
+
+                    # 执行命令，实时捕获输出
+                    try:
+                        # 使用Popen实时获取输出
+                        import select
+
+                        process = subprocess.Popen(
+                            cmd,
+                            cwd=project_dir,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                            text=True,
+                            bufsize=1,
+                            universal_newlines=True,
+                        )
+
+                        # 实时读取输出
+                        output_lines = []
+                        while True:
+                            # 检查标准输出
+                            if process.stdout:
+                                line = process.stdout.readline()
+                                if line:
+                                    output_lines.append(line.strip())
+                                    # 实时发送重要输出（避免刷屏，只发送关键信息）
+                                    if line.strip() and not line.strip().startswith(
+                                        " "
+                                    ):
+                                        await feishu_client.send_text_message(
+                                            chat_id, f"   📤 {line.strip()[:100]}"
+                                        )
+
+                            # 检查标准错误
+                            if process.stderr:
+                                err_line = process.stderr.readline()
+                                if err_line:
+                                    output_lines.append(f"STDERR: {err_line.strip()}")
+                                    await feishu_client.send_text_message(
+                                        chat_id, f"   ⚠️ {err_line.strip()[:100]}"
+                                    )
+
+                            # 检查进程是否结束
+                            if process.poll() is not None:
+                                # 读取剩余输出
+                                remaining_stdout, remaining_stderr = (
+                                    process.communicate()
+                                )
+                                if remaining_stdout:
+                                    for line in remaining_stdout.strip().split("\n"):
+                                        if line:
+                                            output_lines.append(line.strip())
+                                if remaining_stderr:
+                                    for line in remaining_stderr.strip().split("\n"):
+                                        if line:
+                                            output_lines.append(
+                                                f"STDERR: {line.strip()}"
+                                            )
+                                break
+
+                            await asyncio.sleep(0.1)
+
+                        returncode = process.returncode
+                        stdout = "\n".join(
+                            [
+                                line
+                                for line in output_lines
+                                if not line.startswith("STDERR:")
+                            ]
+                        )
+                        stderr = "\n".join(
+                            [
+                                line[8:]
+                                for line in output_lines
+                                if line.startswith("STDERR:")
+                            ]
+                        )
+
+                    except Exception as cmd_error:
+                        returncode = 1
+                        stdout = ""
+                        stderr = str(cmd_error)
+                        await feishu_client.send_text_message(
+                            chat_id, f"   ❌ 命令执行出错: {str(cmd_error)[:100]}"
+                        )
+
                     results.append(
                         {
                             "command": " ".join(cmd),
-                            "returncode": result.returncode,
-                            "stdout": result.stdout[:500],
-                            "stderr": result.stderr[:500],
+                            "name": step_name,
+                            "emoji": emoji,
+                            "returncode": returncode,
+                            "stdout": stdout[:500],
+                            "stderr": stderr[:500],
                         }
                     )
 
-                # 发送结果
+                    # 发送步骤完成消息
+                    if returncode == 0:
+                        await feishu_client.send_text_message(
+                            chat_id, f"   ✅ {step_name}完成！"
+                        )
+                    else:
+                        await feishu_client.send_text_message(
+                            chat_id, f"   ❌ {step_name}失败"
+                        )
+
+                    await asyncio.sleep(0.3)
+
+                # 发送最终结果 - 情感化总结
                 success = all(r["returncode"] == 0 for r in results)
                 if success:
-                    await feishu_client.send_text_message(
-                        chat_id,
-                        "✅ Git提交完成！\n\n"
-                        + "📋 执行结果:\n"
-                        + "✓ git add .\n"
-                        + "✓ git status\n"
-                        + "✓ git commit\n"
-                        + "✓ git push",
-                    )
+                    commit_message = "🎉 **Git提交大成功！**\n\n"
+                    commit_message += "✅ **所有步骤完成：**\n"
+                    for r in results:
+                        commit_message += f"  {r['emoji']} {r['name']} ✓\n"
+
+                    commit_message += "\n📊 **提交详情：**\n"
+                    # 获取最新的提交信息
+                    try:
+                        latest_commit = subprocess.check_output(
+                            ["git", "log", "-1", "--oneline"],
+                            cwd=project_dir,
+                            text=True,
+                        ).strip()
+                        commit_message += f"```\n{latest_commit}\n```"
+                    except:
+                        commit_message += "（获取提交详情失败）"
+
+                    await feishu_client.send_text_message(chat_id, commit_message)
                 else:
-                    errors = "\n".join(
-                        [
-                            f"✗ {r['command']}: {r['stderr']}"
-                            for r in results
-                            if r["returncode"] != 0
-                        ]
-                    )
-                    await feishu_client.send_text_message(
-                        chat_id, f"❌ Git提交失败:\n\n{errors[:1000]}"
-                    )
+                    error_count = sum(1 for r in results if r["returncode"] != 0)
+                    error_message = f"😢 **Git提交遇到问题** ({error_count}/{len(commands)} 失败)\n\n"
+
+                    for r in results:
+                        status = "✅" if r["returncode"] == 0 else "❌"
+                        error_message += f"{status} {r['emoji']} {r['name']}\n"
+                        if r["returncode"] != 0 and r["stderr"]:
+                            error_message += f"   错误: {r['stderr'][:200]}\n"
+
+                    error_message += "\n🔧 **建议检查：**\n"
+                    error_message += "1. Git配置是否正确\n"
+                    error_message += "2. 是否有未提交的冲突\n"
+                    error_message += "3. 网络连接是否正常"
+
+                    await feishu_client.send_text_message(chat_id, error_message)
 
             except Exception as e:
                 await feishu_client.send_text_message(
-                    chat_id, f"❌ Git提交出错: {str(e)}"
+                    chat_id, f"😱 **Git提交崩溃啦！**\n❌ 系统错误: {str(e)[:200]}"
                 )
 
         # 启动后台任务
@@ -249,13 +382,14 @@ class CommandProcessor:
         return {
             "ok": True,
             "action": "git_commit",
-            "message": "Git提交任务已启动，请稍候...",
+            "message": "🤖 Git机器人已启动，正在准备提交代码，请稍候～",
         }
 
     async def _start_server(self, chat_id: str) -> Dict[str, Any]:
-        """启动服务器"""
+        """启动服务器 - 带情感化实时反馈"""
         import asyncio
         import httpx
+        import time
         from .feishu_client import feishu_client
 
         async def check_server_running() -> bool:
@@ -268,17 +402,27 @@ class CommandProcessor:
                 return False
 
         async def wait_for_server_start(timeout: int = 30, interval: int = 2) -> bool:
-            """等待服务器启动，带重试"""
+            """等待服务器启动，带重试和进度反馈"""
             import time
+
             start_time = time.time()
             attempts = 0
-            
+
             while time.time() - start_time < timeout:
                 attempts += 1
+                elapsed = time.time() - start_time
+
+                # 每5秒发送一次等待状态（避免刷屏）
+                if attempts % 3 == 1:
+                    dots = "." * (attempts % 4)
+                    await feishu_client.send_text_message(
+                        chat_id, f"⏳ 等待服务器响应{dots} ({elapsed:.0f}s)"
+                    )
+
                 if await check_server_running():
                     return True
                 await asyncio.sleep(interval)
-            
+
             return False
 
         async def do_start_server():
@@ -286,19 +430,37 @@ class CommandProcessor:
                 project_dir = Path(__file__).parent.parent
 
                 # 检查服务器是否已在运行
+                await feishu_client.send_text_message(
+                    chat_id, "🔍 **服务器状态检查中...**"
+                )
+                await asyncio.sleep(0.3)
+
                 if await check_server_running():
                     await feishu_client.send_text_message(
                         chat_id,
-                        "✅ 服务器已经在运行中！\n\n"
-                        "📍 本地地址: http://127.0.0.1:8000\n"
-                        "🌐 检查公网URL请运行: ./manage.sh status",
+                        "😊 **服务器已经在运行啦！**\n\n"
+                        "📍 **本地地址:** http://127.0.0.1:8000\n"
+                        "🌐 **公网检查:** `./manage.sh status`\n"
+                        "💡 想重启吗？先停止再启动哦～",
                     )
                     return
 
-                # 启动服务器
-                await feishu_client.send_text_message(chat_id, "🖥️ 正在启动服务器...")
+                # 开始启动服务器 - 情感化表达
+                await feishu_client.send_text_message(
+                    chat_id, "🚀 **服务器启动序列开始！**\n准备点火发射～"
+                )
+                await asyncio.sleep(0.5)
+
+                # 步骤1: 激活环境
+                await feishu_client.send_text_message(
+                    chat_id, "1️⃣ **步骤1:** 激活Python虚拟环境..."
+                )
 
                 # 使用manage.sh启动服务器，确保虚拟环境正确
+                await feishu_client.send_text_message(
+                    chat_id, "2️⃣ **步骤2:** 启动UVicorn服务器..."
+                )
+
                 subprocess.Popen(
                     [
                         "bash",
@@ -314,29 +476,42 @@ class CommandProcessor:
                 )
 
                 # 等待服务器启动，带重试
-                await feishu_client.send_text_message(chat_id, "⏳ 等待服务器启动...")
-                
+                await feishu_client.send_text_message(
+                    chat_id, "3️⃣ **步骤3:** 等待服务器就绪..."
+                )
+
+                start_time = time.time()
                 if await wait_for_server_start(timeout=30, interval=2):
+                    elapsed = time.time() - start_time
                     await feishu_client.send_text_message(
                         chat_id,
-                        "✅ 服务器启动成功！\n\n"
-                        "📍 本地地址: http://127.0.0.1:8000\n"
-                        "🌐 如需公网访问，请启动隧道: ./manage.sh tunnel\n"
-                        "📊 状态检查: ./manage.sh status",
+                        f"🎉 **服务器启动成功！** (耗时 {elapsed:.1f}s)\n\n"
+                        "🏠 **本地访问:** http://127.0.0.1:8000\n"
+                        "🌍 **公网隧道:** `./manage.sh tunnel`\n"
+                        "📊 **状态检查:** `./manage.sh status`\n"
+                        "💬 **健康检查:** http://127.0.0.1:8000/health",
                     )
                 else:
                     await feishu_client.send_text_message(
                         chat_id,
-                        "❌ 服务器启动失败，请检查：\n"
-                        "1. 虚拟环境是否激活\n"
-                        "2. 端口8000是否被占用\n"
-                        "3. 查看日志: tail -f logs/server.log\n"
-                        "4. 手动启动: ./manage.sh start",
+                        "😢 **服务器启动失败**\n\n"
+                        "🔧 **可能原因:**\n"
+                        "1. 🐍 Python虚拟环境未激活\n"
+                        "2. 🔌 端口8000被占用\n"
+                        "3. 📜 依赖包缺失\n"
+                        "4. 🌐 网络问题\n\n"
+                        "🛠️ **解决方案:**\n"
+                        "```bash\n"
+                        "# 查看日志\n"
+                        "tail -f logs/server.log\n\n"
+                        "# 手动启动\n"
+                        "./manage.sh start\n"
+                        "```",
                     )
 
             except Exception as e:
                 await feishu_client.send_text_message(
-                    chat_id, f"❌ 启动服务器出错: {str(e)}"
+                    chat_id, f"😱 **启动过程崩溃！**\n❌ 系统错误: {str(e)[:200]}"
                 )
 
         # 启动后台任务
@@ -345,7 +520,7 @@ class CommandProcessor:
         return {
             "ok": True,
             "action": "start_server",
-            "message": "服务器启动任务已启动，请稍候...",
+            "message": "🤖 服务器启动程序已激活，正在预热引擎，请稍候～",
         }
 
     async def _show_models(self) -> Dict[str, Any]:
@@ -369,6 +544,146 @@ class CommandProcessor:
 
         message = "🤖 **可用模型列表**\n\n" + "\n".join(model_list)
         return {"ok": True, "message": message}
+
+    async def _greeting(self) -> Dict[str, Any]:
+        """打招呼"""
+        return {
+            "ok": True,
+            "action": "greeting",
+            "message": "👋 你好！我是OpenCode助手，可以帮你完成开发任务。请发送你要完成的任务，比如：'帮我写一个Python函数' 或 '修复这个bug'",
+        }
+
+    async def _switch_feishu_mode(self, mode: str, chat_id: str) -> Dict[str, Any]:
+        """切换飞书交互模式 - 带实时情感反馈"""
+        import asyncio
+        import time
+        from .feishu_client import feishu_client
+        from ..feishu_websocket import restart_websocket_client, stop_websocket_client
+
+        # 在后台执行模式切换
+        async def do_switch_mode():
+            try:
+                config = get_config_manager()
+
+                # 验证模式
+                if mode not in ["websocket", "webhook"]:
+                    await feishu_client.send_text_message(
+                        chat_id,
+                        f"🤔 咦？{mode} 是什么模式？我只认识 'websocket' 和 'webhook' 哦～",
+                    )
+                    return
+
+                # 获取当前模式
+                current_mode = config.get_feishu_mode()
+                await feishu_client.send_text_message(
+                    chat_id, f"🔍 让我看看... 当前是 {current_mode} 模式"
+                )
+
+                if current_mode == mode:
+                    await feishu_client.send_text_message(
+                        chat_id, f"😊 已经是 {mode} 模式啦，不用切换～ 我去喝杯茶 ☕️"
+                    )
+                    return
+
+                # 开始切换 - 情感化表达
+                await feishu_client.send_text_message(
+                    chat_id,
+                    f"🚀 **准备起飞！** 从 {current_mode} 切换到 {mode} 模式...",
+                )
+                await asyncio.sleep(0.5)
+
+                # 步骤1: 保存配置
+                await feishu_client.send_text_message(
+                    chat_id, f"📝 步骤1: 正在保存 {mode} 配置..."
+                )
+                success = config.set_feishu_mode(mode, save=True)
+                await asyncio.sleep(0.3)
+
+                if not success:
+                    await feishu_client.send_text_message(
+                        chat_id, f"😱 **糟糕！** 配置保存失败，让我想想办法..."
+                    )
+                    return
+
+                await feishu_client.send_text_message(
+                    chat_id, f"✅ 配置保存成功！现在切换到 {mode} 模式"
+                )
+                await asyncio.sleep(0.5)
+
+                # 步骤2: 根据模式执行不同操作
+                if mode == "webhook":
+                    await feishu_client.send_text_message(
+                        chat_id, f"🔌 **Webhook模式启动！**\n正在停止WebSocket连接..."
+                    )
+                    # 停止WebSocket
+                    stop_success = await stop_websocket_client()
+                    await asyncio.sleep(0.5)
+
+                    if stop_success:
+                        await feishu_client.send_text_message(
+                            chat_id,
+                            f"🛑 WebSocket已停止\n✨ 现在使用Webhook接收事件\n📍 请到飞书控制台配置回调URL: /feishu/webhook/opencode",
+                        )
+                    else:
+                        await feishu_client.send_text_message(
+                            chat_id,
+                            f"⚠️ WebSocket停止有点小问题，但Webhook模式已生效\n🔧 可以继续使用，我会在后台处理",
+                        )
+
+                else:  # websocket模式
+                    await feishu_client.send_text_message(
+                        chat_id, f"🔗 **WebSocket模式启动！**\n建立长连接中..."
+                    )
+
+                    # 重启 WebSocket 客户端
+                    await feishu_client.send_text_message(
+                        chat_id, f"⏳ 正在连接飞书服务器，稍等片刻～"
+                    )
+
+                    start_time = time.time()
+                    restart_success = await restart_websocket_client()
+                    elapsed_time = time.time() - start_time
+
+                    if restart_success:
+                        await feishu_client.send_text_message(
+                            chat_id,
+                            f"🎉 **连接成功！** (耗时 {elapsed_time:.1f}s)\n"
+                            f"🤖 WebSocket长连接已建立\n"
+                            f"📡 实时接收飞书事件中...\n"
+                            f"💬 现在可以给我发消息啦！",
+                        )
+                    else:
+                        await feishu_client.send_text_message(
+                            chat_id,
+                            f"😅 **连接遇到小麻烦**\n"
+                            f"❌ WebSocket启动失败\n"
+                            f"🔍 正在检查原因...\n"
+                            f"💡 尝试：1. 检查网络 2. 查看日志 3. 重试一次",
+                        )
+
+            except Exception as e:
+                try:
+                    await feishu_client.send_text_message(
+                        chat_id,
+                        f"😨 **哎呀，出错了！**\n"
+                        f"❌ 错误信息: {str(e)}\n"
+                        f"🤗 别担心，我还在～ 试试重新切换模式？",
+                    )
+                except:
+                    # 如果连错误消息都发不出去...
+                    pass
+
+        # 启动后台任务
+        asyncio.create_task(do_switch_mode())
+
+        # 立即返回响应
+        emotion = "🤔" if mode == "webhook" else "🚀"
+        return {
+            "ok": True,
+            "action": "switch_feishu_mode",
+            "mode": mode,
+            "message": f"{emotion} 收到指令！正在准备切换到 {mode} 模式，请稍候～",
+        }
 
     def add_command(self, name: str, config: Dict[str, Any]):
         """添加新指令"""

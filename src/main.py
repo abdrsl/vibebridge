@@ -45,6 +45,16 @@ from src.legacy.feishu_webhook_handler import handle_feishu_webhook
 from src.legacy.feishu_card_handler import process_feishu_webhook
 from src.legacy.session_manager import get_session_manager, SessionStatus
 
+# WebSocket 长连接支持
+FEISHU_WEBSOCKET_AVAILABLE = False
+start_feishu_websocket = None
+
+try:
+    from src.feishu_websocket import start_feishu_websocket
+    FEISHU_WEBSOCKET_AVAILABLE = True
+except ImportError:
+    print("[WebSocket] 模块未找到，WebSocket功能不可用")
+
 load_dotenv()
 
 
@@ -59,7 +69,29 @@ async def lifespan(app: FastAPI):
         print(f"[System] Error starting multi-agent system: {e}")
         # Continue without multi-agent system
 
+    # 启动Feishu WebSocket客户端（如果启用）
+    websocket_client = None
+    if FEISHU_WEBSOCKET_AVAILABLE and start_feishu_websocket:
+        try:
+            websocket_client = await start_feishu_websocket()
+            if websocket_client:
+                print("[WebSocket] Feishu WebSocket客户端已启动")
+            else:
+                print("[WebSocket] Feishu WebSocket客户端未启用或启动失败")
+        except Exception as e:
+            print(f"[WebSocket] 启动Feishu WebSocket客户端时出错: {e}")
+    elif FEISHU_WEBSOCKET_AVAILABLE:
+        print("[WebSocket] WebSocket模块已加载但start_feishu_websocket函数不可用")
+
     yield
+    
+    # 关闭Feishu WebSocket客户端
+    if websocket_client:
+        try:
+            await websocket_client.stop()
+            print("[WebSocket] Feishu WebSocket客户端已停止")
+        except Exception as e:
+            print(f"[WebSocket] 停止Feishu WebSocket客户端时出错: {e}")
 
     print("App shutting down...")
     try:

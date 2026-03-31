@@ -40,6 +40,32 @@
       "description": "显示可用模型和当前模型",
       "confirm": false,
       "response": "🤖 模型信息加载中..."
+    },
+    "hello": {
+      "action": "greeting",
+      "description": "打招呼",
+      "confirm": false,
+      "response": "👋 你好！我是OpenCode助手，可以帮你完成开发任务。请发送你要完成的任务，比如：'帮我写一个Python函数' 或 '修复这个bug'"
+    },
+    "hi": {
+      "action": "greeting",
+      "description": "打招呼",
+      "confirm": false,
+      "response": "👋 你好！我是OpenCode助手，可以帮你完成开发任务。请发送你要完成的任务，比如：'帮我写一个Python函数' 或 '修复这个bug'"
+    },
+    "websocket模式": {
+      "action": "switch_feishu_mode",
+      "mode": "websocket",
+      "description": "切换到WebSocket长连接模式",
+      "confirm": false,
+      "response": "🔄 正在切换到WebSocket模式..."
+    },
+    "webhook模式": {
+      "action": "switch_feishu_mode",
+      "mode": "webhook",
+      "description": "切换到Webhook回调模式",
+      "confirm": false,
+      "response": "🔄 正在切换到Webhook模式..."
     }
   },
   "models": {

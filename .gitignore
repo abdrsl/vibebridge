@@ -56,29 +56,50 @@ api_test.txt
 deepseek_test.txt
 test_final.txt
 
-# Temporary documentation
+# Temporary documentation and checklists
 TEST_SUMMARY.md
 TEST_V2_SUMMARY.md
 test_opencode_v2.md
+RELEASE_CHECKLIST.md
+SUMMARY.md
+COMPLETION_SUMMARY.md
+NEW_FEATURES.md
+SESSION_MANAGEMENT_SUMMARY.md
+FIXED_URL_SOLUTIONS.md
 
-# Aider
+# Aider and development tools
 .aider*
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
 
-# Infra (contains local config)
+# Infra and local config
 infra/.env
 infra/data/
+infra/terraform.tfstate
+infra/terraform.tfstate.backup
+infra/.terraform/
 
 # Other temporary files
 simple_demo.py
 start_ngrok.sh
 .RADME.md.swp
 
-# Session data
+# Session and task data
 data/sessions/
+data/tasks/*.json
+!data/tasks/.gitkeep
 
 # Temporary files directory
 tmp/
 tmp/*
+
+# Backup files
+*.backup
+*.bak
+*.old
 
 # Python bytecode
 *.py[cod]
