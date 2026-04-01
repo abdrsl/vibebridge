@@ -1,5 +1,7 @@
 # OpenCode-Feishu Bridge Multi-Agent System
 
+[![Version](https://img.shields.io/badge/version-1.0.1-blue)](./docs/VERSION.md) [![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
+
 一个基于FastAPI的AI编程代理服务，采用模块化多智能体架构，集成飞书和OpenCode CLI。
 
 ## 🏗️ 系统架构
