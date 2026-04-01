@@ -176,14 +176,48 @@ async def handle_feishu_message(
                 )
                 return {"ok": True, "action": "command_confirm", "command": text}
             else:
-                # 直接执行，发送响应消息
-                response_msg = result.get("message") or cmd_config.get(
-                    "response", "指令已执行"
+                # 直接执行，检查是否需要发送响应消息
+                print(
+                    f"[Command] Processing immediate command, message_sent: {result.get('message_sent', False)}"
                 )
-                background_tasks.add_task(
-                    feishu_client.send_text_message, chat_id, response_msg
-                )
-                return {"ok": True, "action": cmd_config["action"], "immediate": True}
+                if not result.get("message_sent", False):
+                    # 命令处理器未发送消息，发送响应消息
+                    response_msg = result.get("message") or cmd_config.get(
+                        "response", "指令已执行"
+                    )
+                    print(f"[Command] Sending response message: {response_msg[:50]}...")
+
+                    # 直接使用asyncio.create_task发送消息，避免background_tasks问题
+                    async def send_message_task():
+                        try:
+                            print(
+                                f"[Command] Starting to send message via feishu_client..."
+                            )
+                            result = await feishu_client.send_text_message(
+                                chat_id, response_msg
+                            )
+                            print(f"[Command] Message send result: {result}")
+                        except Exception as e:
+                            print(f"[Command] Error sending message: {e}")
+
+                    # 同时使用background_tasks和asyncio.create_task以确保消息发送
+                    background_tasks.add_task(send_message_task)
+                    # 也直接启动任务
+                    asyncio.create_task(send_message_task())
+                else:
+                    print(f"[Command] Message already sent by command processor")
+                # 返回结果，保留所有字段
+                response_data = {
+                    "ok": True,
+                    "action": cmd_config["action"],
+                    "immediate": True,
+                }
+                # 合并result中的额外字段（如mode, message_sent等）
+                for key, value in result.items():
+                    if key not in ["ok", "action"]:  # 避免覆盖
+                        response_data[key] = value
+                print(f"[Command] Returning response: {response_data}")
+                return response_data
         else:
             # 执行失败
             error_msg = result.get("error", "指令执行失败")
@@ -358,10 +392,13 @@ async def run_opencode_with_session(
     chat_id: str,
     notify: bool = True,
 ):
-    """使用session运行OpenCode任务"""
+    """使用session运行OpenCode任务 - 实时卡片更新版本"""
     print(f"[Session] Starting task {task_id} for session {session_id}")
 
     session_manager = get_session_manager()
+    card_message_id = None
+    output_lines = []
+    tool_count = 0
 
     try:
         if notify:
@@ -371,8 +408,16 @@ async def run_opencode_with_session(
                 start_card = build_start_card(task_id, task.user_message)
                 result = await feishu_client.send_interactive_card(chat_id, start_card)
                 print(f"[Session] Start card result: {result}")
+                print(f"[Session] Result type: {type(result)}, keys: {list(result.keys()) if isinstance(result, dict) else 'not dict'}")
+                
+                # 保存卡片消息ID用于后续更新
+                if result and result.get("code") == 0:
+                    data = result.get("data", {})
+                    print(f"[Session] Data keys: {list(data.keys()) if isinstance(data, dict) else 'not dict'}")
+                    card_message_id = data.get("message_id")
+                    print(f"[Session] Card message ID: {card_message_id}")
 
-        # 只收集事件，不实时发送
+        # 实时处理事件并更新卡片
         final_result = None
         error_result = None
 
@@ -381,10 +426,37 @@ async def run_opencode_with_session(
             content = event.get("content", "")
             print(f"[Session] Event: {event_type} - {content[:50]}...")
 
+            # 收集输出行用于显示
+            if event_type == "tool_use" or event_type == "text" or event_type == "status":
+                output_lines.append(content)
+                if event_type == "tool_use":
+                    tool_count += 1
+            
+            # 更新进度卡片
+            if notify and card_message_id and output_lines:
+                # 获取最新的输出（最后3行）
+                latest_output = "\n".join(output_lines[-3:]) if len(output_lines) > 3 else "\n".join(output_lines)
+                progress_card = build_progress_card(
+                    task_id, "running", latest_output, tool_count
+                )
+                
+                try:
+                    update_result = await feishu_client.update_interactive_card(
+                        card_message_id, progress_card
+                    )
+                    if update_result and update_result.get("code") == 0:
+                        print(f"[Session] Progress card updated successfully")
+                    else:
+                        print(f"[Session] Failed to update progress card: {update_result}")
+                except Exception as e:
+                    print(f"[Session] Error updating progress card: {e}")
+
             if event_type == "done":
                 final_result = content
+                output_lines.append(f"✅ 任务完成: {content[:100]}...")
             elif event_type == "error":
                 error_result = content
+                output_lines.append(f"❌ 任务失败: {content}")
 
         # 任务完成后更新session状态
         if final_result:
@@ -409,11 +481,19 @@ async def run_opencode_with_session(
                     final_card = build_result_card(
                         task_id, task.user_message, task.output_lines, final_result
                     )
-                    result = await feishu_client.send_interactive_card(
-                        chat_id, final_card
-                    )
-                    print(f"[Session] Result card sent: {result}")
-
+                    if card_message_id:
+                        # 更新现有卡片
+                        result = await feishu_client.update_interactive_card(
+                            card_message_id, final_card
+                        )
+                        print(f"[Session] Result card updated: {result}")
+                    else:
+                        # 发送新卡片
+                        result = await feishu_client.send_interactive_card(
+                            chat_id, final_card
+                        )
+                        print(f"[Session] Result card sent: {result}")
+        
         elif error_result:
             await session_manager.update_session(
                 session_id,
@@ -432,8 +512,16 @@ async def run_opencode_with_session(
             if notify:
                 print(f"[Session] Building error card for session {session_id}")
                 card = build_error_card(task_id, error_result)
-                result = await feishu_client.send_interactive_card(chat_id, card)
-                print(f"[Session] Error card sent: {result}")
+                if card_message_id:
+                    # 更新现有卡片
+                    result = await feishu_client.update_interactive_card(
+                        card_message_id, card
+                    )
+                    print(f"[Session] Error card updated: {result}")
+                else:
+                    # 发送新卡片
+                    result = await feishu_client.send_interactive_card(chat_id, card)
+                    print(f"[Session] Error card sent: {result}")
 
     except Exception as e:
         print(f"[Session] Error: {e}")

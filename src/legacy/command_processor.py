@@ -112,6 +112,7 @@ class CommandProcessor:
             执行结果
         """
         action = cmd_config.get("action", "")
+        background_tasks = kwargs.get("background_tasks")
 
         try:
             if action == "clear_session":
@@ -126,10 +127,10 @@ class CommandProcessor:
             elif action == "show_models":
                 return await self._show_models()
             elif action == "greeting":
-                return await self._greeting()
+                return await self._greeting(chat_id, background_tasks)
             elif action == "switch_feishu_mode":
                 mode = cmd_config.get("mode", "websocket")
-                return await self._switch_feishu_mode(mode, chat_id)
+                return await self._switch_feishu_mode(mode, chat_id, background_tasks)
             else:
                 return {"ok": False, "error": f"Unknown action: {action}"}
         except Exception as e:
@@ -545,144 +546,229 @@ class CommandProcessor:
         message = "🤖 **可用模型列表**\n\n" + "\n".join(model_list)
         return {"ok": True, "message": message}
 
-    async def _greeting(self) -> Dict[str, Any]:
+    async def _greeting(self, chat_id: str, background_tasks=None) -> Dict[str, Any]:
         """打招呼"""
+        from .feishu_client import feishu_client
+
+        message = "👋 你好！我是OpenCode助手，可以帮你完成开发任务。请发送你要完成的任务，比如：'帮我写一个Python函数' 或 '修复这个bug'"
+
+        # 直接发送消息，确保消息到达
+        print(f"[Command] Greeting: sending message directly to {chat_id}")
+        try:
+            await feishu_client.send_text_message(chat_id, message)
+            print(f"[Command] Greeting: message sent successfully")
+            message_sent = True
+        except Exception as e:
+            print(f"[Command] Greeting: failed to send message: {e}")
+            # 如果直接发送失败，尝试通过 background_tasks
+            if background_tasks:
+                print(f"[Command] Greeting: falling back to background_tasks")
+                background_tasks.add_task(
+                    feishu_client.send_text_message, chat_id, message
+                )
+                message_sent = True
+            else:
+                message_sent = False
+
         return {
             "ok": True,
             "action": "greeting",
-            "message": "👋 你好！我是OpenCode助手，可以帮你完成开发任务。请发送你要完成的任务，比如：'帮我写一个Python函数' 或 '修复这个bug'",
+            "message_sent": message_sent,
+            "message": message,  # 保留消息内容供参考
         }
 
-    async def _switch_feishu_mode(self, mode: str, chat_id: str) -> Dict[str, Any]:
-        """切换飞书交互模式 - 带实时情感反馈"""
+    async def _switch_feishu_mode(
+        self, mode: str, chat_id: str, background_tasks=None
+    ) -> Dict[str, Any]:
+        """切换飞书交互模式 - 带实时情感反馈（动态更新同一消息）"""
         import asyncio
         import time
         from .feishu_client import feishu_client
         from ..feishu_websocket import restart_websocket_client, stop_websocket_client
 
+        # 发送初始消息并获取消息ID
+        emotion = "🤔" if mode == "webhook" else "🚀"
+        message_content = f"{emotion} 收到指令！正在准备切换到 {mode} 模式，请稍候～\n"
+        initial_message = message_content.strip()  # 保存初始消息用于返回
+        message_id = None
+
+        print(f"[Command] switch_feishu_mode: sending initial message")
+        try:
+            result = await feishu_client.send_text_message(
+                chat_id, message_content.strip()
+            )
+            if result and result.get("code") == 0:
+                message_id = result.get("data", {}).get("message_id")
+                print(
+                    f"[Command] switch_feishu_mode: message sent with ID: {message_id}"
+                )
+            else:
+                print(
+                    f"[Command] switch_feishu_mode: failed to get message ID from result: {result}"
+                )
+        except Exception as e:
+            print(f"[Command] switch_feishu_mode: failed to send initial message: {e}")
+            # 如果直接发送失败，尝试通过 background_tasks
+            if background_tasks:
+                print(f"[Command] switch_feishu_mode: falling back to background_tasks")
+                background_tasks.add_task(
+                    feishu_client.send_text_message, chat_id, message_content.strip()
+                )
+
+        # 消息更新辅助函数
+        async def update_message(new_content: str, append: bool = True):
+            """更新消息内容 - 通过删除旧消息并发送新消息来模拟更新"""
+            nonlocal message_content, message_id
+            print(f"[Command] switch_feishu_mode: update_message called, new_content='{new_content}', append={append}, message_id={message_id}")
+            if append:
+                message_content += new_content + "\n"
+            else:
+                message_content = new_content + "\n"
+
+            # 如果有旧消息，尝试删除
+            old_message_id = message_id
+            if old_message_id:
+                try:
+                    delete_result = await feishu_client.delete_message(old_message_id)
+                    if delete_result and delete_result.get("code") == 0:
+                        print(f"[Command] switch_feishu_mode: old message deleted successfully")
+                    else:
+                        print(f"[Command] switch_feishu_mode: failed to delete old message: {delete_result}")
+                except Exception as e:
+                    print(f"[Command] switch_feishu_mode: error deleting old message: {e}")
+            
+            # 发送新消息
+            try:
+                result = await feishu_client.send_text_message(
+                    chat_id, message_content.strip()
+                )
+                print(f"[Command] switch_feishu_mode: new message result: {result}")
+                if result and result.get("code") == 0:
+                    message_id = result.get("data", {}).get("message_id")
+                else:
+                    # 发送失败，保留旧message_id（如果还存在）
+                    message_id = old_message_id
+            except Exception as e:
+                print(f"[Command] switch_feishu_mode: failed to send new message: {e}")
+                message_id = old_message_id
+
         # 在后台执行模式切换
         async def do_switch_mode():
+            print(f"[Command] switch_feishu_mode: do_switch_mode started for mode={mode}")
             try:
                 config = get_config_manager()
 
                 # 验证模式
                 if mode not in ["websocket", "webhook"]:
-                    await feishu_client.send_text_message(
-                        chat_id,
-                        f"🤔 咦？{mode} 是什么模式？我只认识 'websocket' 和 'webhook' 哦～",
+                    await update_message(
+                        f"🤔 咦？{mode} 是什么模式？我只认识 'websocket' 和 'webhook' 哦～"
                     )
                     return
 
                 # 获取当前模式
                 current_mode = config.get_feishu_mode()
-                await feishu_client.send_text_message(
-                    chat_id, f"🔍 让我看看... 当前是 {current_mode} 模式"
-                )
+                await update_message(f"🔍 让我看看... 当前是 {current_mode} 模式")
 
                 if current_mode == mode:
-                    await feishu_client.send_text_message(
-                        chat_id, f"😊 已经是 {mode} 模式啦，不用切换～ 我去喝杯茶 ☕️"
+                    await update_message(
+                        f"😊 已经是 {mode} 模式啦，不用切换～ 我去喝杯茶 ☕️"
                     )
                     return
 
                 # 开始切换 - 情感化表达
-                await feishu_client.send_text_message(
-                    chat_id,
-                    f"🚀 **准备起飞！** 从 {current_mode} 切换到 {mode} 模式...",
+                await update_message(
+                    f"🚀 **准备起飞！** 从 {current_mode} 切换到 {mode} 模式..."
                 )
                 await asyncio.sleep(0.5)
 
                 # 步骤1: 保存配置
-                await feishu_client.send_text_message(
-                    chat_id, f"📝 步骤1: 正在保存 {mode} 配置..."
-                )
+                await update_message(f"📝 步骤1: 正在保存 {mode} 配置...")
                 success = config.set_feishu_mode(mode, save=True)
                 await asyncio.sleep(0.3)
 
                 if not success:
-                    await feishu_client.send_text_message(
-                        chat_id, f"😱 **糟糕！** 配置保存失败，让我想想办法..."
-                    )
+                    await update_message(f"😱 **糟糕！** 配置保存失败，让我想想办法...")
                     return
 
-                await feishu_client.send_text_message(
-                    chat_id, f"✅ 配置保存成功！现在切换到 {mode} 模式"
-                )
+                await update_message(f"✅ 配置保存成功！现在切换到 {mode} 模式")
                 await asyncio.sleep(0.5)
 
                 # 步骤2: 根据模式执行不同操作
                 if mode == "webhook":
-                    await feishu_client.send_text_message(
-                        chat_id, f"🔌 **Webhook模式启动！**\n正在停止WebSocket连接..."
+                    await update_message(
+                        f"🔌 **Webhook模式启动！**\n正在停止WebSocket连接..."
                     )
                     # 停止WebSocket
                     stop_success = await stop_websocket_client()
                     await asyncio.sleep(0.5)
 
                     if stop_success:
-                        await feishu_client.send_text_message(
-                            chat_id,
-                            f"🛑 WebSocket已停止\n✨ 现在使用Webhook接收事件\n📍 请到飞书控制台配置回调URL: /feishu/webhook/opencode",
+                        await update_message(
+                            f"🛑 WebSocket已停止\n✨ 现在使用Webhook接收事件\n📍 请到飞书控制台配置回调URL: /feishu/webhook/opencode"
                         )
                     else:
-                        await feishu_client.send_text_message(
-                            chat_id,
-                            f"⚠️ WebSocket停止有点小问题，但Webhook模式已生效\n🔧 可以继续使用，我会在后台处理",
+                        await update_message(
+                            f"⚠️ WebSocket停止有点小问题，但Webhook模式已生效\n🔧 可以继续使用，我会在后台处理"
                         )
 
                 else:  # websocket模式
-                    await feishu_client.send_text_message(
-                        chat_id, f"🔗 **WebSocket模式启动！**\n建立长连接中..."
-                    )
+                    await update_message(f"🔗 **WebSocket模式启动！**\n建立长连接中...")
 
                     # 重启 WebSocket 客户端
-                    await feishu_client.send_text_message(
-                        chat_id, f"⏳ 正在连接飞书服务器，稍等片刻～"
-                    )
+                    await update_message(f"⏳ 正在连接飞书服务器，稍等片刻～")
 
                     start_time = time.time()
                     restart_success = await restart_websocket_client()
                     elapsed_time = time.time() - start_time
 
                     if restart_success:
-                        await feishu_client.send_text_message(
-                            chat_id,
+                        await update_message(
                             f"🎉 **连接成功！** (耗时 {elapsed_time:.1f}s)\n"
                             f"🤖 WebSocket长连接已建立\n"
                             f"📡 实时接收飞书事件中...\n"
-                            f"💬 现在可以给我发消息啦！",
+                            f"💬 现在可以给我发消息啦！"
                         )
                     else:
-                        await feishu_client.send_text_message(
-                            chat_id,
+                        await update_message(
                             f"😅 **连接遇到小麻烦**\n"
                             f"❌ WebSocket启动失败\n"
                             f"🔍 正在检查原因...\n"
-                            f"💡 尝试：1. 检查网络 2. 查看日志 3. 重试一次",
+                            f"💡 尝试：1. 检查网络 2. 查看日志 3. 重试一次"
                         )
 
             except Exception as e:
                 try:
-                    await feishu_client.send_text_message(
-                        chat_id,
+                    await update_message(
                         f"😨 **哎呀，出错了！**\n"
                         f"❌ 错误信息: {str(e)}\n"
-                        f"🤗 别担心，我还在～ 试试重新切换模式？",
+                        f"🤗 别担心，我还在～ 试试重新切换模式？"
                     )
                 except:
                     # 如果连错误消息都发不出去...
                     pass
 
         # 启动后台任务
-        asyncio.create_task(do_switch_mode())
+        print(f"[Command] switch_feishu_mode: scheduling do_switch_mode task")
+        # 使用 background_tasks 确保任务在请求生命周期后继续执行
+        if background_tasks:
+            background_tasks.add_task(do_switch_mode)
+            print(f"[Command] switch_feishu_mode: added to background_tasks")
+        else:
+            # 后备方案
+            import asyncio
+            task = asyncio.create_task(do_switch_mode())
+            task.add_done_callback(
+                lambda t: print(f"[Command] switch_feishu_mode task done: {t}")
+            )
+            print(f"[Command] switch_feishu_mode: task created {task}")
 
-        # 立即返回响应
-        emotion = "🤔" if mode == "webhook" else "🚀"
+        # 立即返回响应（webhook处理器不需要再发送消息）
         return {
             "ok": True,
             "action": "switch_feishu_mode",
             "mode": mode,
-            "message": f"{emotion} 收到指令！正在准备切换到 {mode} 模式，请稍候～",
+            "message_sent": True,  # 表示消息已发送
+            "message": initial_message,  # 保留消息内容供参考
         }
 
     def add_command(self, name: str, config: Dict[str, Any]):

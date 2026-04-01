@@ -49,6 +49,10 @@ class FeishuClient:
                 )
             elif method.upper() == "GET":
                 resp = await client.get(url, headers=headers, timeout=30.0, **kwargs)
+            elif method.upper() == "PATCH":
+                resp = await client.patch(
+                    url, headers=headers, json=payload, timeout=30.0, **kwargs
+                )
             else:
                 raise ValueError(f"Unsupported method: {method}")
 
@@ -96,10 +100,17 @@ class FeishuClient:
         if not receive_id:
             receive_id = self.default_chat_id
         if not receive_id:
+            print(f"[Feishu] Error: No chat_id provided for text message")
             return {"error": "No chat_id provided"}
+
+        print(
+            f"[Feishu] Sending text message to {receive_id[:10]}..., length: {len(text)}"
+        )
+        print(f"[Feishu] Message preview: {text[:100]}...")
 
         token = await self.get_tenant_access_token()
         if not token:
+            print(f"[Feishu] Error: Failed to get access token")
             return {"error": "Failed to get access token"}
 
         url = f"{self.api_base}/im/v1/messages?receive_id_type=chat_id"
@@ -111,12 +122,62 @@ class FeishuClient:
         payload = {
             "receive_id": receive_id,
             "msg_type": "text",
-            "content": '{"text":"' + text.replace('"', '\\"') + '"}',
+            "content": json.dumps({"text": text}),
         }
 
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(url, headers=headers, json=payload, timeout=30.0)
-            return resp.json()
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(
+                    url, headers=headers, json=payload, timeout=30.0
+                )
+                result = resp.json()
+                print(f"[Feishu] Text message send result: {result}")
+                return result
+        except Exception as e:
+            print(f"[Feishu] Error sending text message: {e}")
+            return {"error": str(e)}
+
+    async def update_text_message(
+        self, message_id: str, text: str
+    ) -> dict[str, Any] | None:
+        """更新已有的文本消息
+
+        Args:
+            message_id: 要更新的消息ID
+            text: 新的消息内容
+
+        Returns:
+            更新结果，格式: {"code": 0, "data": {...}} 或 {"code": -1, "error": "..."}
+        """
+        print(
+            f"[Feishu] Updating text message {message_id[:10]}..., length: {len(text)}"
+        )
+        print(f"[Feishu] Message preview: {text[:100]}...")
+
+        token = await self.get_tenant_access_token()
+        if not token:
+            print(f"[Feishu] Error: Failed to get access token")
+            return {"code": -1, "error": "Failed to get access token"}
+
+        # 飞书更新消息API: PATCH /im/v1/messages/{message_id}
+        url = f"{self.api_base}/im/v1/messages/{message_id}"
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json; charset=utf-8",
+        }
+
+        payload = {
+            "msg_type": "text",
+            "content": json.dumps({"text": text}),
+        }
+
+        try:
+            result = await self._make_request_with_retry("PATCH", url, headers, payload)
+            print(f"[Feishu] Text message update result: {result}")
+            return result
+        except Exception as e:
+            print(f"[Feishu] Error updating text message: {e}")
+            return {"code": -1, "error": str(e)}
 
     async def send_interactive_card(
         self,
@@ -337,6 +398,77 @@ class FeishuClient:
 
         # 第二步：发送文件消息
         return await self.send_file_message(receive_id, file_key, actual_file_name)
+
+    async def delete_message(self, message_id: str) -> dict[str, Any] | None:
+        """删除消息
+
+        Args:
+            message_id: 要删除的消息ID
+
+        Returns:
+            删除结果
+        """
+        print(f"[Feishu] Deleting message {message_id[:10]}...")
+        token = await self.get_tenant_access_token()
+        if not token:
+            print(f"[Feishu] Error: Failed to get access token")
+            return {"code": -1, "error": "Failed to get access token"}
+
+        # 飞书删除消息API: DELETE /im/v1/messages/{message_id}
+        url = f"{self.api_base}/im/v1/messages/{message_id}"
+        headers = {
+            "Authorization": f"Bearer {token}",
+        }
+
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.delete(url, headers=headers, timeout=30.0)
+                result = resp.json()
+                print(f"[Feishu] Delete message result: {result}")
+                return result
+        except Exception as e:
+            print(f"[Feishu] Error deleting message: {e}")
+            return {"code": -1, "error": str(e)}
+
+    async def update_interactive_card(
+        self, message_id: str, card: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        """更新已有的交互卡片
+
+        Args:
+            message_id: 要更新的卡片消息ID
+            card: 新的卡片内容
+
+        Returns:
+            更新结果，格式: {"code": 0, "data": {...}} 或 {"code": -1, "error": "..."}
+        """
+        print(f"[Feishu] Updating interactive card {message_id[:10]}...")
+        print(f"[Feishu] Card preview: {json.dumps(card)[:200]}...")
+
+        token = await self.get_tenant_access_token()
+        if not token:
+            print(f"[Feishu] Error: Failed to get access token")
+            return {"code": -1, "error": "Failed to get access token"}
+
+        # 飞书更新消息API: PATCH /im/v1/messages/{message_id}
+        url = f"{self.api_base}/im/v1/messages/{message_id}"
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json; charset=utf-8",
+        }
+
+        payload = {
+            "msg_type": "interactive",
+            "content": json.dumps(card),
+        }
+
+        try:
+            result = await self._make_request_with_retry("PATCH", url, headers, payload)
+            print(f"[Feishu] Interactive card update result: {result}")
+            return result
+        except Exception as e:
+            print(f"[Feishu] Error updating interactive card: {e}")
+            return {"code": -1, "error": str(e)}
 
 
 def build_start_card(task_id: str, user_message: str) -> dict:

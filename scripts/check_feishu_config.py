@@ -11,7 +11,7 @@ import requests
 from pathlib import Path
 
 # 添加项目目录到路径
-project_dir = Path(__file__).parent
+project_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(project_dir))
 
 

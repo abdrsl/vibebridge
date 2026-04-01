@@ -4,17 +4,17 @@ import httpx
 import json
 
 
-async def test_greeting():
-    """测试 greeting 命令"""
+async def test_mode_switch(mode_command="websocket模式"):
+    """测试模式切换命令"""
     url = "http://localhost:8000/feishu/webhook/opencode"
 
     # 模拟飞书 webhook v2 格式
     payload = {
         "schema": "2.0",
         "header": {
-            "event_id": "test_1775000008",
+            "event_id": "test_1775000009",
             "event_type": "im.message.receive_v1",
-            "create_time": "1775000008000",
+            "create_time": "1775000009000",
             "token": "test_token",
             "app_id": "cli_xxxxxxxxxxxxxxxx",
             "tenant_key": "REDACTED_TENANT_KEY",
@@ -30,14 +30,14 @@ async def test_greeting():
                 "tenant_key": "REDACTED_TENANT_KEY",
             },
             "message": {
-                "message_id": "om_test_1775000008",
+                "message_id": "om_test_1775000009",
                 "root_id": "",
                 "parent_id": "",
-                "create_time": "1775000008000",
+                "create_time": "1775000009000",
                 "chat_id": "oc_REDACTED_CHAT_ID",
                 "chat_type": "p2p",
                 "message_type": "text",
-                "content": json.dumps({"text": "hello"}),
+                "content": json.dumps({"text": mode_command}),
             },
         },
     }
@@ -50,4 +50,7 @@ async def test_greeting():
 
 
 if __name__ == "__main__":
-    asyncio.run(test_greeting())
+    import sys
+
+    command = sys.argv[1] if len(sys.argv) > 1 else "websocket模式"
+    asyncio.run(test_mode_switch(command))
