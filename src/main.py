@@ -2,7 +2,6 @@
 OpenCode-Feishu Bridge - Main FastAPI application with multi-agent architecture.
 """
 
-import asyncio
 import json
 import os
 import time
@@ -10,40 +9,38 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Query, Request
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from fastapi.middleware.cors import CORSMiddleware
 
 # Rate limiting
 from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
-# Multi-agent system
-from src.system import start_multi_agent_system, stop_multi_agent_system, get_system
+from src.legacy.feishu_card_handler import process_feishu_webhook
 
 # Legacy imports for compatibility (will be migrated to agents)
 from src.legacy.feishu_client import (
-    feishu_client,
-    build_start_card,
+    build_error_card,
     build_progress_card,
     build_result_card,
-    build_error_card,
-    build_help_card,
+    build_start_card,
+    feishu_client,
 )
 from src.legacy.feishu_crypto import (
-    decrypt_feishu_payload,
     FeishuSecurityError,
+    decrypt_feishu_payload,
     verify_feishu_webhook,
 )
+from src.legacy.opencode_integration import TaskStatus, opencode_manager
 from src.legacy.secure_config import get_secret
 from src.legacy.task_parser import extract_text_from_feishu_payload
-from src.legacy.task_store import save_task, list_tasks, get_task, update_task
-from src.legacy.opencode_integration import opencode_manager, TaskStatus
-from src.legacy.feishu_webhook_handler import handle_feishu_webhook
-from src.legacy.feishu_card_handler import process_feishu_webhook
-from src.legacy.session_manager import get_session_manager, SessionStatus
+from src.legacy.task_store import get_task, list_tasks, save_task, update_task
+
+# Multi-agent system
+from src.system import get_system, start_multi_agent_system, stop_multi_agent_system
 
 # WebSocket 长连接支持
 FEISHU_WEBSOCKET_AVAILABLE = False
@@ -84,7 +81,7 @@ async def lifespan(app: FastAPI):
         print("[WebSocket] WebSocket模块已加载但start_feishu_websocket函数不可用")
 
     yield
-    
+
     # 关闭Feishu WebSocket客户端
     if websocket_client:
         try:
@@ -431,7 +428,7 @@ async def run_opencode_with_feishu(task_id: str, notify: bool = True):
                 )
                 print(f"[OpenCode] Error card sent: {result}")
             else:
-                print(f"[OpenCode] No result or error to send")
+                print("[OpenCode] No result or error to send")
 
     except Exception as e:
         print(f"[OpenCode] Error: {e}")

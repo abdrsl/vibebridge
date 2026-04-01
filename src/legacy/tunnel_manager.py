@@ -4,13 +4,10 @@ Tunnel Manager - Manages SSH tunnel to serveo.net and notifies Feishu on URL cha
 """
 
 import asyncio
-import json
 import os
 import re
 import signal
 import subprocess
-import sys
-import time
 from pathlib import Path
 from typing import Optional
 
@@ -158,13 +155,13 @@ class TunnelManager:
 
     async def notify_url_change(self, old_url: Optional[str], new_url: str):
         """Send notification to Feishu about URL change."""
-        print(f"📨 Sending URL change notification to Feishu...")
+        print("📨 Sending URL change notification to Feishu...")
 
         # Build message
         message_lines = [
             "🚨 **隧道 URL 已更新**",
             "",
-            f"**新隧道 URL:**",
+            "**新隧道 URL:**",
             f"`{new_url}`",
             "",
             "**Webhook 端点:**",
@@ -223,15 +220,15 @@ class TunnelManager:
             )
 
             if result and result.get("code") == 0:
-                print(f"✅ URL change notification sent to Feishu")
+                print("✅ URL change notification sent to Feishu")
             else:
                 # Fallback to text message
-                print(f"⚠️ Card failed, falling back to text message")
+                print("⚠️ Card failed, falling back to text message")
                 text_result = await self.feishu_client.send_text_message(
                     receive_id=None, text=message
                 )
                 if text_result and text_result.get("code") == 0:
-                    print(f"✅ Text notification sent to Feishu")
+                    print("✅ Text notification sent to Feishu")
                 else:
                     print(f"❌ Failed to send notification: {text_result}")
 

@@ -5,13 +5,13 @@ Starts and coordinates all agents.
 
 import asyncio
 import logging
-from typing import Dict, Any, List
+from typing import Any, Dict, List
 
 from src.agents.coordinator import CoordinatorAgent
-from src.agents.opencode_agent import OpenCodeAgent
 from src.agents.feishu_agent import FeishuAgent
-from src.agents.memory_agent import MemoryAgent
 from src.agents.llm_agent import LLMAgent
+from src.agents.memory_agent import MemoryAgent
+from src.agents.opencode_agent import OpenCodeAgent
 from src.agents.skill_agent import SkillAgent
 from src.message_bus.bus import get_message_bus
 

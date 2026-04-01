@@ -14,15 +14,15 @@ Example:
     In code: api_key = get_secret("DEEPSEEK_API_KEY")
 """
 
-import os
 import base64
-import json
-from typing import Optional, Any
-from pathlib import Path
-from Crypto.Cipher import AES
-from Crypto.Util.Padding import pad, unpad
-from Crypto.Random import get_random_bytes
 import hashlib
+import os
+from pathlib import Path
+from typing import Optional
+
+from Crypto.Cipher import AES
+from Crypto.Random import get_random_bytes
+from Crypto.Util.Padding import pad, unpad
 
 # Constants
 MASTER_KEY_ENV_VAR = "AI_MASTER_KEY"
@@ -86,7 +86,7 @@ def _get_master_key() -> bytes:
     # No master key found - in development, we can fall back to a default
     # but warn loudly. In production, this should fail.
     if os.getenv("APP_ENV") == "dev":
-        print(f"⚠️  WARNING: No master key found. Using default development key.")
+        print("⚠️  WARNING: No master key found. Using default development key.")
         print(f"   Set {MASTER_KEY_ENV_VAR} or create {MASTER_KEY_FILE}")
         # Generate deterministic key from string for development
         dev_key = "dev-master-key-insecure-change-in-production"
@@ -263,8 +263,8 @@ def migrate_env_file(input_path: str = ".env", output_path: str = ".env.encrypte
     output_file = Path(output_path)
     output_file.write_text("\n".join(output_lines))
     print(f"\n✅ Created encrypted environment file: {output_path}")
-    print(f"   Review the file and replace your original .env if ready.")
-    print(f"   Don't forget to set your master key!")
+    print("   Review the file and replace your original .env if ready.")
+    print("   Don't forget to set your master key!")
     print(f"   Export: export {MASTER_KEY_ENV_VAR}=$(cat ~/.ai-product-lab/master.key)")
 
 

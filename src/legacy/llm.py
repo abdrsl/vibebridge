@@ -2,6 +2,7 @@ import os
 
 from dotenv import load_dotenv
 from openai import OpenAI
+
 from .secure_config import get_secret
 
 load_dotenv()

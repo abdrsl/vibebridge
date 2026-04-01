@@ -5,8 +5,8 @@
 
 import asyncio
 import functools
-from typing import Callable, Any, Optional
 import time
+from typing import Any, Callable
 
 
 class RetryConfig:

@@ -1,9 +1,8 @@
 import logging
 import subprocess
-from typing import Dict, Any
 
 from src.agents.base import Agent, Capability
-from src.message_bus.bus import MessageType, Message
+from src.message_bus.bus import Message, MessageType
 
 logger = logging.getLogger(__name__)
 

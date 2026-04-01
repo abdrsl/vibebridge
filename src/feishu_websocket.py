@@ -10,9 +10,9 @@ import json
 import logging
 import os
 import random
-import time
-from typing import Any, Dict, Optional, List, Callable
 import threading
+import time
+from typing import Any, Callable, List, Optional
 
 # 飞书 SDK 导入
 from lark_oapi.event.dispatcher_handler import (
@@ -214,7 +214,7 @@ class OpenCodeEventProcessor:
 
             except TimeoutError:
                 # 超时，但事件会在后台继续处理
-                logger.warning(f"事件处理超时（10秒），但会在后台继续处理")
+                logger.warning("事件处理超时（10秒），但会在后台继续处理")
                 # 返回成功响应，避免飞书重试
                 return {"code": 0, "msg": "success", "note": "processing_in_background"}
             except Exception as e:
@@ -375,10 +375,8 @@ class FeishuWebSocketClient:
             logger.info(f"WebSocket 客户端线程启动 (线程ID: {thread_id})")
 
             # 在这个线程中重新导入需要的模块，避免线程间状态污染
-            import logging
-            import time
             import asyncio
-            import sys
+            import logging
 
             # 创建新的事件循环并设置为当前线程的事件循环
             new_loop = asyncio.new_event_loop()
@@ -389,8 +387,8 @@ class FeishuWebSocketClient:
             ws.client.loop = new_loop
             # 保存循环引用以便停止时使用
             self._client_loop = new_loop
-            from lark_oapi.ws import Client
             from lark_oapi.core.enum import LogLevel
+            from lark_oapi.ws import Client
 
             # 配置 SDK 日志（在这个线程中）
             sdk_logger = logging.getLogger("lark_oapi")
@@ -591,7 +589,6 @@ async def start_feishu_websocket():
 
 if __name__ == "__main__":
     # 测试 WebSocket 客户端
-    import sys
 
     logging.basicConfig(
         level=logging.INFO,

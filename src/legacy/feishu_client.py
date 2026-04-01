@@ -1,14 +1,15 @@
 import json
-import os
 import mimetypes
+import os
 from datetime import datetime
 from pathlib import Path
-from typing import Any, BinaryIO, Optional
+from typing import Any, Optional
 
 import httpx
 from dotenv import load_dotenv
-from .secure_config import get_secret
+
 from .retry_handler import retry_async
+from .secure_config import get_secret
 
 load_dotenv()
 
@@ -100,7 +101,7 @@ class FeishuClient:
         if not receive_id:
             receive_id = self.default_chat_id
         if not receive_id:
-            print(f"[Feishu] Error: No chat_id provided for text message")
+            print("[Feishu] Error: No chat_id provided for text message")
             return {"error": "No chat_id provided"}
 
         print(
@@ -110,7 +111,7 @@ class FeishuClient:
 
         token = await self.get_tenant_access_token()
         if not token:
-            print(f"[Feishu] Error: Failed to get access token")
+            print("[Feishu] Error: Failed to get access token")
             return {"error": "Failed to get access token"}
 
         url = f"{self.api_base}/im/v1/messages?receive_id_type=chat_id"
@@ -156,7 +157,7 @@ class FeishuClient:
 
         token = await self.get_tenant_access_token()
         if not token:
-            print(f"[Feishu] Error: Failed to get access token")
+            print("[Feishu] Error: Failed to get access token")
             return {"code": -1, "error": "Failed to get access token"}
 
         # 飞书更新消息API: PATCH /im/v1/messages/{message_id}
@@ -187,13 +188,13 @@ class FeishuClient:
         if not receive_id:
             receive_id = self.default_chat_id
         if not receive_id:
-            print(f"[Feishu] Error: No chat_id provided")
+            print("[Feishu] Error: No chat_id provided")
             return {"error": "No chat_id provided"}
 
         print(f"[Feishu] Getting access token, app_id={self.app_id[:5]}...")
         token = await self.get_tenant_access_token()
         if not token:
-            print(f"[Feishu] Error: Failed to get access token")
+            print("[Feishu] Error: Failed to get access token")
             return {"error": "Failed to get access token"}
 
         url = f"{self.api_base}/im/v1/messages?receive_id_type=chat_id"
@@ -217,6 +218,10 @@ class FeishuClient:
                     url, headers=headers, json=payload, timeout=30.0
                 )
                 result = resp.json()
+                print(f"[Feishu] Card send result status: {resp.status_code}")
+                print(f"[Feishu] Card send result keys: {list(result.keys())}")
+                if 'data' in result and isinstance(result['data'], dict):
+                    print(f"[Feishu] Card send data keys: {list(result['data'].keys())}")
                 print(f"[Feishu] Card send result: {result}")
                 return result
         except Exception as e:
@@ -411,7 +416,7 @@ class FeishuClient:
         print(f"[Feishu] Deleting message {message_id[:10]}...")
         token = await self.get_tenant_access_token()
         if not token:
-            print(f"[Feishu] Error: Failed to get access token")
+            print("[Feishu] Error: Failed to get access token")
             return {"code": -1, "error": "Failed to get access token"}
 
         # 飞书删除消息API: DELETE /im/v1/messages/{message_id}
@@ -447,7 +452,7 @@ class FeishuClient:
 
         token = await self.get_tenant_access_token()
         if not token:
-            print(f"[Feishu] Error: Failed to get access token")
+            print("[Feishu] Error: Failed to get access token")
             return {"code": -1, "error": "Failed to get access token"}
 
         # 飞书更新消息API: PATCH /im/v1/messages/{message_id}
@@ -549,7 +554,7 @@ def build_result_card(
     output_lines: list[str],
     final_result: str | None = None,
 ) -> dict:
-    summary = "\n".join(output_lines[-5:]) if output_lines else "无输出"
+    "\n".join(output_lines[-5:]) if output_lines else "无输出"
 
     card = {
         "config": {"wide_screen_mode": True},

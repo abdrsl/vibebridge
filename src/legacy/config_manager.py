@@ -4,11 +4,10 @@
 """
 
 import json
-import os
 import threading
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any, Dict
 
 
 class ConfigManager:

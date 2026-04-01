@@ -6,8 +6,9 @@
 import json
 import os
 import subprocess
-from typing import Dict, Any, Optional, Union
 from pathlib import Path
+from typing import Any, Dict, Optional
+
 from .config_manager import get_config_manager
 
 
@@ -139,7 +140,7 @@ class CommandProcessor:
 
     async def _clear_session(self, user_id: str, chat_id: str) -> Dict[str, Any]:
         """清空当前用户的会话"""
-        from .session_manager import get_session_manager, SessionStatus
+        from .session_manager import SessionStatus, get_session_manager
 
         session_manager = get_session_manager()
 
@@ -169,7 +170,7 @@ class CommandProcessor:
         # 将当前模型保存到用户会话中
         from .session_manager import get_session_manager
 
-        session_manager = get_session_manager()
+        get_session_manager()
 
         # 这里我们创建一个特殊的系统消息来记录模型选择
         # 实际模型切换在LLM调用时根据这个配置进行
@@ -184,6 +185,7 @@ class CommandProcessor:
     async def _git_commit(self, chat_id: str) -> Dict[str, Any]:
         """执行Git提交 - 带实时CLI输出显示"""
         import asyncio
+
         from .feishu_client import feishu_client
 
         # 在后台执行Git提交
@@ -230,7 +232,6 @@ class CommandProcessor:
                     # 执行命令，实时捕获输出
                     try:
                         # 使用Popen实时获取输出
-                        import select
 
                         process = subprocess.Popen(
                             cmd,
@@ -389,8 +390,10 @@ class CommandProcessor:
     async def _start_server(self, chat_id: str) -> Dict[str, Any]:
         """启动服务器 - 带情感化实时反馈"""
         import asyncio
-        import httpx
         import time
+
+        import httpx
+
         from .feishu_client import feishu_client
 
         async def check_server_running() -> bool:
@@ -556,13 +559,13 @@ class CommandProcessor:
         print(f"[Command] Greeting: sending message directly to {chat_id}")
         try:
             await feishu_client.send_text_message(chat_id, message)
-            print(f"[Command] Greeting: message sent successfully")
+            print("[Command] Greeting: message sent successfully")
             message_sent = True
         except Exception as e:
             print(f"[Command] Greeting: failed to send message: {e}")
             # 如果直接发送失败，尝试通过 background_tasks
             if background_tasks:
-                print(f"[Command] Greeting: falling back to background_tasks")
+                print("[Command] Greeting: falling back to background_tasks")
                 background_tasks.add_task(
                     feishu_client.send_text_message, chat_id, message
                 )
@@ -583,8 +586,9 @@ class CommandProcessor:
         """切换飞书交互模式 - 带实时情感反馈（动态更新同一消息）"""
         import asyncio
         import time
-        from .feishu_client import feishu_client
+
         from ..feishu_websocket import restart_websocket_client, stop_websocket_client
+        from .feishu_client import feishu_client
 
         # 发送初始消息并获取消息ID
         emotion = "🤔" if mode == "webhook" else "🚀"
@@ -592,7 +596,7 @@ class CommandProcessor:
         initial_message = message_content.strip()  # 保存初始消息用于返回
         message_id = None
 
-        print(f"[Command] switch_feishu_mode: sending initial message")
+        print("[Command] switch_feishu_mode: sending initial message")
         try:
             result = await feishu_client.send_text_message(
                 chat_id, message_content.strip()
@@ -610,7 +614,7 @@ class CommandProcessor:
             print(f"[Command] switch_feishu_mode: failed to send initial message: {e}")
             # 如果直接发送失败，尝试通过 background_tasks
             if background_tasks:
-                print(f"[Command] switch_feishu_mode: falling back to background_tasks")
+                print("[Command] switch_feishu_mode: falling back to background_tasks")
                 background_tasks.add_task(
                     feishu_client.send_text_message, chat_id, message_content.strip()
                 )
@@ -631,12 +635,12 @@ class CommandProcessor:
                 try:
                     delete_result = await feishu_client.delete_message(old_message_id)
                     if delete_result and delete_result.get("code") == 0:
-                        print(f"[Command] switch_feishu_mode: old message deleted successfully")
+                        print("[Command] switch_feishu_mode: old message deleted successfully")
                     else:
                         print(f"[Command] switch_feishu_mode: failed to delete old message: {delete_result}")
                 except Exception as e:
                     print(f"[Command] switch_feishu_mode: error deleting old message: {e}")
-            
+
             # 发送新消息
             try:
                 result = await feishu_client.send_text_message(
@@ -687,7 +691,7 @@ class CommandProcessor:
                 await asyncio.sleep(0.3)
 
                 if not success:
-                    await update_message(f"😱 **糟糕！** 配置保存失败，让我想想办法...")
+                    await update_message("😱 **糟糕！** 配置保存失败，让我想想办法...")
                     return
 
                 await update_message(f"✅ 配置保存成功！现在切换到 {mode} 模式")
@@ -696,7 +700,7 @@ class CommandProcessor:
                 # 步骤2: 根据模式执行不同操作
                 if mode == "webhook":
                     await update_message(
-                        f"🔌 **Webhook模式启动！**\n正在停止WebSocket连接..."
+                        "🔌 **Webhook模式启动！**\n正在停止WebSocket连接..."
                     )
                     # 停止WebSocket
                     stop_success = await stop_websocket_client()
@@ -704,18 +708,18 @@ class CommandProcessor:
 
                     if stop_success:
                         await update_message(
-                            f"🛑 WebSocket已停止\n✨ 现在使用Webhook接收事件\n📍 请到飞书控制台配置回调URL: /feishu/webhook/opencode"
+                            "🛑 WebSocket已停止\n✨ 现在使用Webhook接收事件\n📍 请到飞书控制台配置回调URL: /feishu/webhook/opencode"
                         )
                     else:
                         await update_message(
-                            f"⚠️ WebSocket停止有点小问题，但Webhook模式已生效\n🔧 可以继续使用，我会在后台处理"
+                            "⚠️ WebSocket停止有点小问题，但Webhook模式已生效\n🔧 可以继续使用，我会在后台处理"
                         )
 
                 else:  # websocket模式
-                    await update_message(f"🔗 **WebSocket模式启动！**\n建立长连接中...")
+                    await update_message("🔗 **WebSocket模式启动！**\n建立长连接中...")
 
                     # 重启 WebSocket 客户端
-                    await update_message(f"⏳ 正在连接飞书服务器，稍等片刻～")
+                    await update_message("⏳ 正在连接飞书服务器，稍等片刻～")
 
                     start_time = time.time()
                     restart_success = await restart_websocket_client()
@@ -730,10 +734,10 @@ class CommandProcessor:
                         )
                     else:
                         await update_message(
-                            f"😅 **连接遇到小麻烦**\n"
-                            f"❌ WebSocket启动失败\n"
-                            f"🔍 正在检查原因...\n"
-                            f"💡 尝试：1. 检查网络 2. 查看日志 3. 重试一次"
+                            "😅 **连接遇到小麻烦**\n"
+                            "❌ WebSocket启动失败\n"
+                            "🔍 正在检查原因...\n"
+                            "💡 尝试：1. 检查网络 2. 查看日志 3. 重试一次"
                         )
 
             except Exception as e:
@@ -748,11 +752,11 @@ class CommandProcessor:
                     pass
 
         # 启动后台任务
-        print(f"[Command] switch_feishu_mode: scheduling do_switch_mode task")
+        print("[Command] switch_feishu_mode: scheduling do_switch_mode task")
         # 使用 background_tasks 确保任务在请求生命周期后继续执行
         if background_tasks:
             background_tasks.add_task(do_switch_mode)
-            print(f"[Command] switch_feishu_mode: added to background_tasks")
+            print("[Command] switch_feishu_mode: added to background_tasks")
         else:
             # 后备方案
             import asyncio

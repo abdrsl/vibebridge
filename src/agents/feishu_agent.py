@@ -1,8 +1,7 @@
 import logging
-from typing import Dict, Any
 
 from src.agents.base import Agent, Capability
-from src.message_bus.bus import MessageType, Message
+from src.message_bus.bus import Message, MessageType
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +81,7 @@ class FeishuAgent(Agent):
         """Handle send card request."""
         chat_id = message.payload.get("chat_id")
         card_content = message.payload.get("card")
-        card_type = message.payload.get("card_type", "interactive")
+        message.payload.get("card_type", "interactive")
 
         if not chat_id or not card_content:
             logger.warning(

@@ -1,41 +1,38 @@
-import asyncio
 import json
 import os
 from contextlib import asynccontextmanager
 from typing import Any
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Query, Request
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from fastapi.middleware.cors import CORSMiddleware
-
-from .llm import ask_deepseek_for_design_advice
-from .task_parser import extract_text_from_feishu_payload
-from .task_store import save_task, list_tasks, get_task, update_task
-from .opencode_integration import opencode_manager, TaskStatus
-from .feishu_client import (
-    feishu_client,
-    build_start_card,
-    build_progress_card,
-    build_result_card,
-    build_error_card,
-    build_help_card,
-)
-from .feishu_crypto import (
-    decrypt_feishu_payload,
-    FeishuSecurityError,
-    verify_feishu_webhook,
-)
-from .secure_config import get_secret
-from .feishu_webhook_handler import handle_feishu_webhook
-from .feishu_card_handler import process_feishu_webhook
-from src.system import start_multi_agent_system, stop_multi_agent_system
 
 # Rate limiting
 from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
+
+from src.system import start_multi_agent_system, stop_multi_agent_system
+
+from .feishu_card_handler import process_feishu_webhook
+from .feishu_client import (
+    build_error_card,
+    build_result_card,
+    build_start_card,
+    feishu_client,
+)
+from .feishu_crypto import (
+    FeishuSecurityError,
+    decrypt_feishu_payload,
+    verify_feishu_webhook,
+)
+from .llm import ask_deepseek_for_design_advice
+from .opencode_integration import TaskStatus, opencode_manager
+from .secure_config import get_secret
+from .task_parser import extract_text_from_feishu_payload
+from .task_store import get_task, list_tasks, save_task, update_task
 
 load_dotenv()
 
@@ -296,7 +293,7 @@ async def run_opencode_with_feishu(task_id: str, notify: bool = True):
                 )
                 print(f"[OpenCode] Error card sent: {result}")
             else:
-                print(f"[OpenCode] No result or error to send")
+                print("[OpenCode] No result or error to send")
 
     except Exception as e:
         print(f"[OpenCode] Error: {e}")

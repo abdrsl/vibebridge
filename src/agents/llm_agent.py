@@ -1,9 +1,9 @@
 import logging
 import os
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 from src.agents.base import Agent, Capability
-from src.message_bus.bus import MessageType, Message
+from src.message_bus.bus import Message, MessageType
 
 logger = logging.getLogger(__name__)
 
@@ -83,9 +83,9 @@ class LLMAgent(Agent):
     async def handle_llm_request(self, message: Message):
         """Handle LLM request."""
         prompt = message.payload.get("prompt", "")
-        model = message.payload.get("model", "")
-        temperature = message.payload.get("temperature", 0.7)
-        max_tokens = message.payload.get("max_tokens", 1000)
+        message.payload.get("model", "")
+        message.payload.get("temperature", 0.7)
+        message.payload.get("max_tokens", 1000)
 
         if not prompt:
             logger.warning(f"[{self.agent_id}] Empty prompt")

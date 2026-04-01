@@ -1,9 +1,9 @@
 import abc
 import logging
-from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
 
-from src.message_bus.bus import MessageBus, Message, MessageType, get_message_bus
+from src.message_bus.bus import Message, MessageBus, MessageType, get_message_bus
 
 logger = logging.getLogger(__name__)
 

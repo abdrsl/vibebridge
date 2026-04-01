@@ -1,11 +1,11 @@
-import logging
 import importlib
+import logging
 import pkgutil
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 from src.agents.base import Agent, Capability
-from src.message_bus.bus import MessageType, Message
+from src.message_bus.bus import Message, MessageType
 
 logger = logging.getLogger(__name__)
 

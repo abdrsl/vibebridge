@@ -1,9 +1,10 @@
 import base64
 import hashlib
+import json
 import os
 from typing import Optional
+
 from Crypto.Cipher import AES
-import json
 
 from .secure_config import get_secret
 
@@ -77,18 +78,18 @@ class FeishuEncryptor:
             # 如果不是标准长度，取前32/24/16字节
             if key_len > 32:
                 self.key = self.key[:32]
-                print(f"[Crypto] Using first 32 bytes for AES-256")
+                print("[Crypto] Using first 32 bytes for AES-256")
             elif key_len > 24:
                 self.key = self.key[:24]
-                print(f"[Crypto] Using first 24 bytes for AES-192")
+                print("[Crypto] Using first 24 bytes for AES-192")
             elif key_len > 16:
                 self.key = self.key[:16]
-                print(f"[Crypto] Using first 16 bytes for AES-128")
+                print("[Crypto] Using first 16 bytes for AES-128")
             else:
                 # 如果小于16字节，填充到16字节
                 padding = 16 - key_len
                 self.key = self.key + bytes([padding]) * padding
-                print(f"[Crypto] Padded to 16 bytes for AES-128")
+                print("[Crypto] Padded to 16 bytes for AES-128")
 
         self.key_length = len(self.key)
         self.aes_mode = {16: "AES-128", 24: "AES-192", 32: "AES-256"}.get(
@@ -143,7 +144,7 @@ class FeishuEncryptor:
                         if any(c in decoded for c in "{[")
                         else 0
                     )
-                    end_idx = len(decoded)
+                    len(decoded)
                     # 从末尾找到匹配的}或]
                     # 简化：直接截取从start_idx开始的部分
                     json_candidate = decoded[start_idx:]
@@ -154,7 +155,7 @@ class FeishuEncryptor:
                         # 尝试解析为JSON（使用模块级别的json导入）
                         parsed = json.loads(json_candidate)
                         print(
-                            f"[Crypto] Successfully parsed JSON without proper padding!"
+                            "[Crypto] Successfully parsed JSON without proper padding!"
                         )
                         return parsed
                     except json.JSONDecodeError:

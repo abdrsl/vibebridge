@@ -1,8 +1,8 @@
 import logging
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
-from src.agents.base import SystemAgent, Capability
-from src.message_bus.bus import MessageType, Message
+from src.agents.base import SystemAgent
+from src.message_bus.bus import Message, MessageType
 
 logger = logging.getLogger(__name__)
 

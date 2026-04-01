@@ -4,14 +4,14 @@
 """
 
 import json
-from typing import Dict, Any
+from typing import Any, Dict
+
 from fastapi import BackgroundTasks
 
 from .feishu_webhook_handler import (
     handle_card_action,
     handle_feishu_message,
 )
-from .feishu_client import feishu_client
 
 
 async def handle_feishu_card_interaction(
@@ -52,15 +52,15 @@ async def handle_feishu_card_interaction(
 
     # 检查是否是直接的卡片动作回调（没有schema和event_type，但有action字段）
     if not schema and not event_type and "action" in body:
-        print(f"[Card] Direct card action callback detected")
+        print("[Card] Direct card action callback detected")
         return await handle_direct_card_action(body, background_tasks)
 
     if event_type == "im.message.receive_v1":
-        print(f"[Card] Handling IM message receive event")
+        print("[Card] Handling IM message receive event")
         return await handle_im_message(event, background_tasks)
 
     elif event_type == "card.action.trigger":
-        print(f"[Card] Handling card action trigger event")
+        print("[Card] Handling card action trigger event")
         return await handle_card_action_trigger(event, background_tasks)
 
     print(f"[Card] Unhandled event type: {event_type}")
@@ -107,7 +107,7 @@ async def handle_card_action_trigger(
             # 如果解析结果还是字符串，继续解析
             if isinstance(parsed, str):
                 current_str = parsed
-                print(f"[Card] Parsed result is still string, continuing...")
+                print("[Card] Parsed result is still string, continuing...")
                 continue
             else:
                 # 得到了最终的字典对象
@@ -139,7 +139,7 @@ async def handle_card_action_trigger(
         return {"ok": True, "action": "processed", "response": {}}
 
     if not action_data:
-        print(f"[Card] No action data parsed")
+        print("[Card] No action data parsed")
         return {"ok": True, "action": "processed", "response": {}}
 
     print(
@@ -247,10 +247,10 @@ async def handle_im_message(
                 print(f"[Card] Value string that failed: {value_str[:200]}...")
                 pass
         else:
-            print(f"[Card] No value string in content object")
+            print("[Card] No value string in content object")
 
         # 卡片交互但无法解析，返回成功响应
-        print(f"[Card] Unparseable card interaction, returning success")
+        print("[Card] Unparseable card interaction, returning success")
         return {"ok": True, "action": "processed", "response": {}}
 
     # 普通文本消息
@@ -325,42 +325,42 @@ async def handle_direct_card_action(
 ) -> Dict[str, Any]:
     """
     处理直接的卡片动作回调（没有schema/event_type的格式）
-    
+
     Args:
         body: 请求体，包含action, open_chat_id, open_id等字段
         background_tasks: 后台任务
-        
+
     Returns:
         处理结果
     """
-    print(f"[Card] Handling direct card action callback")
-    
+    print("[Card] Handling direct card action callback")
+
     # 提取必要字段
     action_value = body.get("action", {}).get("value", "{}")
     open_chat_id = body.get("open_chat_id", "")
     open_id = body.get("open_id", "")
     user_id = body.get("user_id", "")
-    
+
     print(f"[Card] Direct callback - chat_id: {open_chat_id}, user_id: {user_id}, open_id: {open_id}")
     print(f"[Card] Action value: {action_value[:200]}...")
-    
+
     # 解析动作数据（处理多重转义JSON）
     action_data = None
     value_str = action_value if isinstance(action_value, str) else str(action_value)
-    
+
     # 尝试多次解析，处理多重转义
     max_attempts = 5
     current_str = value_str
-    
+
     for attempt in range(max_attempts):
         try:
             parsed = json.loads(current_str)
             print(f"[Card] JSON parsed successfully on attempt {attempt + 1}")
-            
+
             # 如果解析结果还是字符串，继续解析
             if isinstance(parsed, str):
                 current_str = parsed
-                print(f"[Card] Parsed result is still string, continuing...")
+                print("[Card] Parsed result is still string, continuing...")
                 continue
             else:
                 # 得到了最终的字典对象
@@ -373,12 +373,12 @@ async def handle_direct_card_action(
                 action_data = {"error": f"Failed to parse action value: {value_str[:100]}"}
                 break
             # 否则继续尝试
-    
+
     if not action_data:
         action_data = {"error": "Failed to parse action value"}
-    
+
     print(f"[Card] Parsed action data: {action_data}")
-    
+
     # 调用现有的卡片动作处理器
     # 使用open_id作为user_id（飞书使用open_id标识用户）
     effective_user_id = open_id or user_id

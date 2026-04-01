@@ -8,13 +8,12 @@ Skills are directories containing:
 """
 
 import json
+import logging
 import os
 import subprocess
-import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Any, List, Optional, Union
-import logging
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -311,7 +310,6 @@ def get_opencode_skill_manager() -> OpenCodeSkillManager:
 
 if __name__ == "__main__":
     # Test the skill manager
-    import pprint
 
     manager = OpenCodeSkillManager()
 

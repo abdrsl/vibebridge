@@ -4,8 +4,8 @@
 """
 
 import time
-from typing import Set, Dict
 from collections import deque
+from typing import Dict, Set
 
 
 class MessageDeduplicator:

@@ -1,10 +1,9 @@
-import os
+import mimetypes
 import shutil
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Union, BinaryIO
-import mimetypes
+from typing import BinaryIO, Optional, Union
 
 PROJECT_ROOT = Path(__file__).parent.parent
 TEMP_DIR = PROJECT_ROOT / "tmp"
