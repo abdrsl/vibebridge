@@ -341,7 +341,9 @@ async def handle_direct_card_action(
     open_id = body.get("open_id", "")
     user_id = body.get("user_id", "")
 
-    print(f"[Card] Direct callback - chat_id: {open_chat_id}, user_id: {user_id}, open_id: {open_id}")
+    print(
+        f"[Card] Direct callback - chat_id: {open_chat_id}, user_id: {user_id}, open_id: {open_id}"
+    )
     print(f"[Card] Action value: {action_value[:200]}...")
 
     # 解析动作数据（处理多重转义JSON）
@@ -370,7 +372,9 @@ async def handle_direct_card_action(
             print(f"[Card] JSON decode error on attempt {attempt + 1}: {e}")
             # 如果是最后一次尝试，使用默认值
             if attempt == max_attempts - 1:
-                action_data = {"error": f"Failed to parse action value: {value_str[:100]}"}
+                action_data = {
+                    "error": f"Failed to parse action value: {value_str[:100]}"
+                }
                 break
             # 否则继续尝试
 

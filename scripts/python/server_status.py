@@ -44,7 +44,11 @@ print("\n📝 最近活动:")
 print("-" * 70)
 try:
     result = subprocess.run(
-        ["tail", "-20", "/home/user/workspace/opencode-feishu-bridge/logs/server.log"],
+        [
+            "tail",
+            "-20",
+            "/home/user/workspace/opencode-feishu-bridge/logs/server.log",
+        ],
         capture_output=True,
         text=True,
     )

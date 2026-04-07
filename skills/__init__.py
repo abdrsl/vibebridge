@@ -37,7 +37,6 @@ __all__ = [
     "DEFAULT_CONSTITUTION",
     "check_constitution",
     "get_constitution_rules",
-    
     # Session Naming
     "SessionNamingRule",
     "SessionNamingConfig",
@@ -45,7 +44,6 @@ __all__ = [
     "DEFAULT_SESSION_NAMER",
     "generate_session_name",
     "analyze_session_name",
-    
     # Skill Manager
     "Skill",
     "SkillConfig",

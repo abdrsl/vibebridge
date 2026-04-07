@@ -361,24 +361,28 @@ opencode-feishu-bridge/
 │   │   ├── bus.py               # 消息总线实现
 │   │   └── __init__.py
 │   ├── config/                   # 运行时配置
-│   ├── main.py                   # FastAPI主应用（563行）
+│   ├── main.py                   # FastAPI主应用
 │   ├── system.py                 # 系统初始化
 │   ├── feishu_websocket.py       # WebSocket支持
 │   └── __init__.py
-├── tests/                        # 测试文件（20+个测试）
+├── tests/                        # 测试文件（30+个测试）
 │   ├── test_api.py              # API测试
 │   ├── test_multi_agent_start.py # 多智能体测试
 │   ├── test_websocket.py        # WebSocket测试
 │   ├── test_encrypted_webhook.py # 加密Webhook测试
-│   └── ...（共24个测试文件）
+│   ├── test_current_status.py   # 状态测试
+│   ├── test_file_send.py        # 文件发送测试
+│   ├── test_card_interaction.py # 卡片交互测试
+│   └── ...（共30+个测试文件）
 ├── config/                       # 应用配置
 │   ├── settings.json            # 系统设置
 │   └── commands.json            # 命令配置
-├── docs/                         # 文档（14个文档文件）
+├── docs/                         # 文档（18个文档文件）
 ├── examples/                     # 示例代码
 ├── scripts/                      # 工具脚本
 │   ├── check_feishu_config.py   # 配置检查脚本
-│   └── tunnel_monitor.py        # 隧道监控脚本
+│   ├── tunnel_monitor.py        # 隧道监控脚本
+│   └── ...（多个实用脚本）
 ├── deploy/                       # 部署配置
 ├── logs/                         # 日志目录
 ├── data/                         # 数据存储
@@ -390,11 +394,12 @@ opencode-feishu-bridge/
 ├── .env.example                  # 环境变量示例
 ├── requirements.txt              # Python依赖（生产）
 ├── requirements-dev.txt          # Python依赖（开发）
-├── requirements.lock.txt         # 依赖锁文件
+├── pyproject.toml               # 项目配置
 ├── Dockerfile                    # Docker配置
 ├── docker-compose.yml            # Docker Compose配置
-├── manage.sh                     # 管理脚本（8241字节）
+├── manage.sh                     # 管理脚本
 ├── start_all.sh                  # 启动脚本
+├── LICENSE                       # MIT许可证
 └── README.md                     # 项目说明
 ```
 

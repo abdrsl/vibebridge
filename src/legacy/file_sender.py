@@ -84,9 +84,7 @@ class FileSender:
 
         # 创建临时文件
         temp_file = temp_file_manager.create_temp_file(
-            content=text,
-            extension=Path(filename).suffix,
-            prefix="send_"
+            content=text, extension=Path(filename).suffix, prefix="send_"
         )
 
         # 发送文件
@@ -117,7 +115,7 @@ class FileSender:
             发送结果
         """
         # 确保是HTML文件
-        if not filename.endswith('.html'):
+        if not filename.endswith(".html"):
             filename = f"{filename}.html"
 
         return await self.send_text_as_file(

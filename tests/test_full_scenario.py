@@ -5,12 +5,9 @@
 
 import asyncio
 import json
-import os
-from pathlib import Path
-from src.legacy.session_manager import get_session_manager, SessionStatus
+
 from src.legacy.feishu_webhook_handler import handle_feishu_webhook
-from src.legacy.file_sender import send_html_to_feishu
-from src.legacy.temp_file_manager import temp_file_manager
+from src.legacy.session_manager import SessionStatus, get_session_manager
 from src.legacy.simple_skill_manager import execute_skill
 
 

@@ -3,9 +3,10 @@
 测试飞书webhook接收功能
 """
 
-import requests
 import json
 import time
+
+import requests
 
 
 def test_webhook_receive():
@@ -167,7 +168,7 @@ def test_webhook_receive():
     try:
         with open("server.log", "r") as f:
             lines = f.readlines()
-            print(f"   最近相关日志:")
+            print("   最近相关日志:")
             for line in lines[-15:]:
                 if "Webhook" in line or "Session" in line or "Feishu" in line:
                     print(f"   {line.strip()}")

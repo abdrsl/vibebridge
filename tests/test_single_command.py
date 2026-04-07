@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 import json
-import requests
 import time
 import uuid
+
+import requests
 
 
 def send_command(text: str):

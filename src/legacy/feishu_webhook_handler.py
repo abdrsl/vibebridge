@@ -11,13 +11,10 @@ from fastapi import BackgroundTasks
 
 from .feishu_client import (
     build_confirmation_card,
-    build_error_card,
+    build_dynamic_progress_card,
     build_help_card,
-    build_progress_card,
-    build_result_card,
     build_session_continue_card,
     build_session_status_card,
-    build_start_card,
     feishu_client,
 )
 from .opencode_integration import TaskStatus, opencode_manager
@@ -393,34 +390,289 @@ async def run_opencode_with_session(
     chat_id: str,
     notify: bool = True,
 ):
-    """使用session运行OpenCode任务 - 实时卡片更新版本"""
+    """使用session运行OpenCode任务 - 实时文本滚轮显示版本"""
     print(f"[Session] Starting task {task_id} for session {session_id}")
 
     session_manager = get_session_manager()
+
+    # 获取session以获取用户消息
+    session = await session_manager.get_session(session_id)
+    user_message = ""
+    if session and session.messages:
+        # 查找第一个用户消息
+        for msg in session.messages:
+            if msg.role == "user":
+                user_message = msg.content
+                break
+
     card_message_id = None
+    text_message_id = None  # 后备：文本消息ID
     output_lines = []
     tool_count = 0
+    last_update_time = 0
+    update_count = 0
+    current_phase = "analyzing"
+    completed_phases = []
+    thought_summaries = []
+
+    # 阶段和进度追踪
+    def estimate_phase_and_progress():
+        """根据事件估算当前阶段和进度"""
+        nonlocal current_phase, completed_phases
+
+        # 简单启发式：基于工具使用和输出计数
+        total_events = len(output_lines)
+
+        if total_events == 0:
+            return "analyzing", 5
+
+        # 事件计数映射到阶段
+        if total_events < 3:
+            phase = "analyzing"
+            progress = min(20, total_events * 7)
+        elif total_events < 6:
+            if "planning" not in completed_phases:
+                completed_phases.append("planning")
+            phase = "planning"
+            progress = min(40, 20 + (total_events - 3) * 7)
+        elif total_events < 10:
+            if "reading" not in completed_phases:
+                completed_phases.append("reading")
+            phase = "reading"
+            progress = min(60, 40 + (total_events - 6) * 5)
+        elif total_events < 15:
+            if "coding" not in completed_phases:
+                completed_phases.append("coding")
+            phase = "coding"
+            progress = min(80, 60 + (total_events - 10) * 4)
+        elif total_events < 20:
+            if "testing" not in completed_phases:
+                completed_phases.append("testing")
+            phase = "testing"
+            progress = min(95, 80 + (total_events - 15) * 3)
+        else:
+            phase = "summarizing"
+            progress = 95
+
+        # 如果有工具调用，可能是coding或fixing阶段
+        if tool_count > 0 and "coding" not in completed_phases:
+            phase = "coding"
+
+        current_phase = phase
+        return phase, progress
+
+    # 思考摘要提取
+    def extract_thought_summary():
+        """从text事件中提取思考摘要"""
+        if not output_lines:
+            return ""
+
+        # 查找最近的text事件（不是tool_use或status）
+        for line in reversed(output_lines):
+            if (
+                line
+                and len(line) > 10
+                and not line.startswith("🛠️")
+                and not line.startswith("正在")
+            ):
+                # 提取简短摘要
+                summary = line[:100] + "..." if len(line) > 100 else line
+                return summary
+
+        return ""
+
+    # 动态显示更新函数 - 优先使用卡片，后备使用文本
+    async def update_display_message():
+        """更新显示消息 - 优先使用交互卡片更新，失败时使用文本消息"""
+        nonlocal \
+            card_message_id, \
+            text_message_id, \
+            output_lines, \
+            update_count, \
+            current_phase, \
+            completed_phases
+
+        if not output_lines:
+            return
+
+        # 估算阶段和进度
+        phase, progress = estimate_phase_and_progress()
+        thought_summary = extract_thought_summary()
+
+        # 最近输出（最近3行）
+        recent_output_lines = (
+            output_lines[-3:] if len(output_lines) >= 3 else output_lines
+        )
+        recent_output = "\n".join(recent_output_lines)
+
+        # 尝试使用卡片更新（首选）
+        if card_message_id or not text_message_id:  # 优先使用卡片
+            try:
+                # 构建动态进度卡片
+                card = build_dynamic_progress_card(
+                    task_id=task_id,
+                    user_message=user_message,
+                    phase=phase,
+                    progress=progress,
+                    thought_summary=thought_summary,
+                    recent_output=recent_output,
+                    tool_count=tool_count,
+                    output_count=len(output_lines),
+                    status="running",
+                    timeline=completed_phases,
+                )
+
+                if card_message_id:
+                    # 尝试更新现有卡片
+                    update_result = await feishu_client.update_interactive_card(
+                        card_message_id, card
+                    )
+                    if update_result and update_result.get("code") == 0:
+                        # 卡片更新成功
+                        update_count += 1
+                        print(
+                            f"[Session] Card updated successfully, ID: {card_message_id}"
+                        )
+                        return
+                    else:
+                        # 卡片更新失败，尝试发送新卡片
+                        print(f"[Session] Failed to update card: {update_result}")
+                        # 清除旧message_id，尝试发送新卡片
+                        card_message_id = None
+                else:
+                    # 发送新卡片
+                    result = await feishu_client.send_interactive_card(chat_id, card)
+                    if result and result.get("code") == 0:
+                        new_message_id = result.get("data", {}).get("message_id")
+                        if new_message_id:
+                            card_message_id = new_message_id
+                            update_count += 1
+                            print(
+                                f"[Session] New card sent successfully, ID: {card_message_id}"
+                            )
+                            return
+                        else:
+                            print("[Session] No message ID in card result")
+                    else:
+                        print(f"[Session] Failed to send new card: {result}")
+            except Exception as e:
+                print(f"[Session] Error with card update: {e}")
+
+        # 卡片更新失败，回退到文本消息更新
+        # 构建文本消息内容
+        display_lines = output_lines[-10:] if len(output_lines) > 10 else output_lines
+        message_content = "## 🔨 OpenCode 任务执行中\n\n"
+        message_content += f"**任务ID:** `{task_id}`\n"
+        message_content += f"**当前阶段:** {phase} ({progress}%)\n\n"
+        message_content += "**最近输出:**\n```\n"
+        message_content += "\n".join(display_lines[-5:]) if display_lines else "无输出"
+        message_content += "\n```\n\n"
+
+        if thought_summary:
+            message_content += f"**💭 思考摘要:** {thought_summary}\n\n"
+
+        if tool_count > 0:
+            message_content += f"🛠️ 已执行 {tool_count} 个操作\n"
+
+        message_content += f"⏰ 更新次数: {update_count}\n"
+        message_content = message_content.strip()
+
+        # 尝试更新文本消息
+        if text_message_id:
+            try:
+                update_result = await feishu_client.update_text_message(
+                    text_message_id, message_content
+                )
+                if update_result and update_result.get("code") == 0:
+                    # 文本更新成功
+                    update_count += 1
+                    print(
+                        f"[Session] Text message updated successfully, ID: {text_message_id}"
+                    )
+                    return
+                else:
+                    # 文本更新失败
+                    print(f"[Session] Failed to update text message: {update_result}")
+                    # 尝试删除旧消息（如果还存在）
+                    try:
+                        await feishu_client.delete_message(text_message_id)
+                    except:
+                        pass
+                    text_message_id = None
+            except Exception as e:
+                print(f"[Session] Error updating text message: {e}")
+
+        # 发送新文本消息
+        try:
+            result = await feishu_client.send_text_message(chat_id, message_content)
+            print(f"[Session] New text message result: {result}")
+            if result and result.get("code") == 0:
+                new_message_id = result.get("data", {}).get("message_id")
+                if new_message_id:
+                    text_message_id = new_message_id
+                    update_count += 1
+                    print(
+                        f"[Session] New text message sent successfully, ID: {text_message_id}"
+                    )
+                else:
+                    print("[Session] No message ID in text result")
+            else:
+                print(f"[Session] Failed to send new text message: {result}")
+        except Exception as e:
+            print(f"[Session] Failed to send new text message: {e}")
 
     try:
         if notify:
-            print(f"[Session] Sending start card to {chat_id}")
-            task = await opencode_manager.get_task(task_id)
-            if task:
-                start_card = build_start_card(task_id, task.user_message)
-                result = await feishu_client.send_interactive_card(chat_id, start_card)
-                print(f"[Session] Start card result: {result}")
-                print(f"[Session] Result type: {type(result)}, keys: {list(result.keys()) if isinstance(result, dict) else 'not dict'}")
+            # 发送初始消息 - 优先使用卡片
+            print(f"[Session] Sending initial message to {chat_id}")
 
-                # 保存卡片消息ID用于后续更新
+            # 尝试发送初始卡片
+            try:
+                initial_card = build_dynamic_progress_card(
+                    task_id=task_id,
+                    user_message=user_message,
+                    phase="analyzing",
+                    progress=5,
+                    thought_summary="正在解析任务需求...",
+                    recent_output="",
+                    tool_count=0,
+                    output_count=0,
+                    status="running",
+                    timeline=[],
+                )
+
+                result = await feishu_client.send_interactive_card(
+                    chat_id, initial_card
+                )
+                print(f"[Session] Initial card result: {result}")
+
                 if result and result.get("code") == 0:
-                    data = result.get("data", {})
-                    print(f"[Session] Data keys: {list(data.keys()) if isinstance(data, dict) else 'not dict'}")
-                    card_message_id = data.get("message_id")
+                    card_message_id = result.get("data", {}).get("message_id")
                     print(f"[Session] Card message ID: {card_message_id}")
+                else:
+                    print(f"[Session] Failed to send initial card, result: {result}")
+                    # 卡片发送失败，尝试发送文本消息
+                    initial_message = f"## 🚀 OpenCode 任务已启动\n\n**任务ID:** `{task_id}`\n\n**开始执行...**\n\n⏳ 正在初始化，请稍候～"
+                    result = await feishu_client.send_text_message(
+                        chat_id, initial_message
+                    )
+                    print(f"[Session] Initial text message result: {result}")
 
-        # 实时处理事件并更新卡片
+                    if result and result.get("code") == 0:
+                        text_message_id = result.get("data", {}).get("message_id")
+                        print(f"[Session] Text message ID: {text_message_id}")
+                    else:
+                        print(
+                            f"[Session] Failed to send initial text message, result: {result}"
+                        )
+            except Exception as e:
+                print(f"[Session] Error sending initial message: {e}")
+                # 即使发送失败，仍然继续执行任务（不在飞书中显示实时更新）
+
+        # 实时处理事件并更新显示
         final_result = None
         error_result = None
+        import time
 
         async for event in opencode_manager.run_opencode(task_id):
             event_type = event.get("type", "")
@@ -428,30 +680,32 @@ async def run_opencode_with_session(
             print(f"[Session] Event: {event_type} - {content[:50]}...")
 
             # 收集输出行用于显示
-            if event_type == "tool_use" or event_type == "text" or event_type == "status":
+            if (
+                event_type == "tool_use"
+                or event_type == "text"
+                or event_type == "status"
+            ):
                 output_lines.append(content)
                 if event_type == "tool_use":
                     tool_count += 1
 
-            # 更新进度卡片
-            print(f"[Session] Update check: notify={notify}, card_message_id={card_message_id}, output_lines={len(output_lines)}")
-            if notify and card_message_id and output_lines:
-                # 获取最新的输出（最后3行）
-                latest_output = "\n".join(output_lines[-3:]) if len(output_lines) > 3 else "\n".join(output_lines)
-                progress_card = build_progress_card(
-                    task_id, "running", latest_output, tool_count
-                )
+                # 控制更新频率：每2个事件或每2秒更新一次
+                current_time = time.time()
+                should_update = False
 
-                try:
-                    update_result = await feishu_client.update_interactive_card(
-                        card_message_id, progress_card
-                    )
-                    if update_result and update_result.get("code") == 0:
-                        print("[Session] Progress card updated successfully")
-                    else:
-                        print(f"[Session] Failed to update progress card: {update_result}")
-                except Exception as e:
-                    print(f"[Session] Error updating progress card: {e}")
+                # 总是更新前几次，让用户看到进度
+                if len(output_lines) <= 3:
+                    should_update = True
+                # 每收集到2个新事件更新一次
+                elif len(output_lines) % 2 == 0:
+                    should_update = True
+                # 如果超过2秒没更新，也更新一次
+                elif current_time - last_update_time > 2.0:
+                    should_update = True
+
+                if should_update and notify:
+                    await update_display_message()
+                    last_update_time = current_time
 
             if event_type == "done":
                 final_result = content
@@ -477,24 +731,104 @@ async def run_opencode_with_session(
             )
 
             if notify:
-                print(f"[Session] Building result card for session {session_id}")
-                task = await opencode_manager.get_task(task_id)
-                if task:
-                    final_card = build_result_card(
-                        task_id, task.user_message, task.output_lines, final_result
-                    )
+                # 发送最终完成消息 - 优先更新现有卡片
+                print(
+                    f"[Session] Sending final completion message for session {session_id}"
+                )
+
+                try:
+                    # 尝试更新现有卡片为完成状态
                     if card_message_id:
-                        # 更新现有卡片
-                        result = await feishu_client.update_interactive_card(
-                            card_message_id, final_card
+                        # 构建完成卡片
+                        completed_phases.append("summarizing")
+                        completion_card = build_dynamic_progress_card(
+                            task_id=task_id,
+                            user_message=user_message,
+                            phase="summarizing",
+                            progress=100,
+                            thought_summary="任务执行完成",
+                            recent_output=f"✅ 完成: {final_result[:100]}..."
+                            if final_result
+                            else "任务完成",
+                            tool_count=tool_count,
+                            output_count=len(output_lines),
+                            status="completed",
+                            timeline=completed_phases,
                         )
-                        print(f"[Session] Result card updated: {result}")
+
+                        update_result = await feishu_client.update_interactive_card(
+                            card_message_id, completion_card
+                        )
+                        if update_result and update_result.get("code") == 0:
+                            print(
+                                f"[Session] Card updated to completed status, ID: {card_message_id}"
+                            )
+                        else:
+                            # 卡片更新失败，发送新卡片
+                            print(
+                                f"[Session] Failed to update card to completed: {update_result}"
+                            )
+                            result = await feishu_client.send_interactive_card(
+                                chat_id, completion_card
+                            )
+                            print(f"[Session] New completion card sent: {result}")
+                    elif text_message_id:
+                        # 只有文本消息，更新文本消息
+                        completion_message = "## 🎉 OpenCode 任务完成\n\n"
+                        completion_message += f"**任务ID:** `{task_id}`\n\n"
+                        completion_message += f"**最终结果:**\n{final_result[:200]}{'...' if len(final_result) > 200 else ''}\n\n"
+                        completion_message += "**执行统计:**\n"
+                        completion_message += f"• 📊 总输出行数: {len(output_lines)}\n"
+                        completion_message += f"• 🛠️ 工具使用次数: {tool_count}\n"
+                        completion_message += "• ✅ 状态: 成功完成\n\n"
+                        completion_message += "🎯 任务已成功执行完毕！"
+
+                        update_result = await feishu_client.update_text_message(
+                            text_message_id, completion_message
+                        )
+                        if update_result and update_result.get("code") == 0:
+                            print(
+                                f"[Session] Text message updated to completed, ID: {text_message_id}"
+                            )
+                        else:
+                            # 文本更新失败，发送新消息
+                            print(
+                                f"[Session] Failed to update text message: {update_result}"
+                            )
+                            result = await feishu_client.send_text_message(
+                                chat_id, completion_message
+                            )
+                            print(f"[Session] New completion message sent: {result}")
                     else:
-                        # 发送新卡片
-                        result = await feishu_client.send_interactive_card(
-                            chat_id, final_card
+                        # 没有现有消息，发送新卡片
+                        completion_card = build_dynamic_progress_card(
+                            task_id=task_id,
+                            user_message=user_message,
+                            phase="summarizing",
+                            progress=100,
+                            thought_summary="任务执行完成",
+                            recent_output=f"✅ 完成: {final_result[:100]}..."
+                            if final_result
+                            else "任务完成",
+                            tool_count=tool_count,
+                            output_count=len(output_lines),
+                            status="completed",
+                            timeline=completed_phases,
                         )
-                        print(f"[Session] Result card sent: {result}")
+                        result = await feishu_client.send_interactive_card(
+                            chat_id, completion_card
+                        )
+                        print(f"[Session] New completion card sent: {result}")
+                except Exception as e:
+                    print(f"[Session] Error sending completion message: {e}")
+                    # 后备：发送简单文本消息
+                    try:
+                        completion_message = f"## 🎉 OpenCode 任务完成\n\n**任务ID:** `{task_id}`\n\n✅ 任务已完成"
+                        await feishu_client.send_text_message(
+                            chat_id, completion_message
+                        )
+                    except:
+                        pass
 
         elif error_result:
             await session_manager.update_session(
@@ -512,18 +846,94 @@ async def run_opencode_with_session(
             )
 
             if notify:
-                print(f"[Session] Building error card for session {session_id}")
-                card = build_error_card(task_id, error_result)
-                if card_message_id:
-                    # 更新现有卡片
-                    result = await feishu_client.update_interactive_card(
-                        card_message_id, card
-                    )
-                    print(f"[Session] Error card updated: {result}")
-                else:
-                    # 发送新卡片
-                    result = await feishu_client.send_interactive_card(chat_id, card)
-                    print(f"[Session] Error card sent: {result}")
+                # 发送错误消息 - 优先更新现有卡片
+                print(f"[Session] Sending error message for session {session_id}")
+
+                try:
+                    # 尝试更新现有卡片为失败状态
+                    if card_message_id:
+                        error_card = build_dynamic_progress_card(
+                            task_id=task_id,
+                            user_message=user_message,
+                            phase="fixing",
+                            progress=100,
+                            thought_summary="任务执行失败",
+                            recent_output=f"❌ 错误: {error_result[:100]}...",
+                            tool_count=tool_count,
+                            output_count=len(output_lines),
+                            status="failed",
+                            timeline=completed_phases,
+                        )
+
+                        update_result = await feishu_client.update_interactive_card(
+                            card_message_id, error_card
+                        )
+                        if update_result and update_result.get("code") == 0:
+                            print(
+                                f"[Session] Card updated to failed status, ID: {card_message_id}"
+                            )
+                        else:
+                            # 卡片更新失败，发送新卡片
+                            print(
+                                f"[Session] Failed to update card to failed: {update_result}"
+                            )
+                            result = await feishu_client.send_interactive_card(
+                                chat_id, error_card
+                            )
+                            print(f"[Session] New error card sent: {result}")
+                    elif text_message_id:
+                        # 只有文本消息，更新文本消息
+                        error_message = "## ❌ OpenCode 任务失败\n\n"
+                        error_message += f"**任务ID:** `{task_id}`\n\n"
+                        error_message += f"**错误信息:**\n{error_result[:200]}{'...' if len(error_result) > 200 else ''}\n\n"
+                        error_message += "**执行统计:**\n"
+                        error_message += f"• 📊 总输出行数: {len(output_lines)}\n"
+                        error_message += f"• 🛠️ 工具使用次数: {tool_count}\n"
+                        error_message += "• ❌ 状态: 执行失败\n\n"
+                        error_message += "🔧 请检查任务描述或重试。"
+
+                        update_result = await feishu_client.update_text_message(
+                            text_message_id, error_message
+                        )
+                        if update_result and update_result.get("code") == 0:
+                            print(
+                                f"[Session] Text message updated to failed, ID: {text_message_id}"
+                            )
+                        else:
+                            # 文本更新失败，发送新消息
+                            print(
+                                f"[Session] Failed to update text message: {update_result}"
+                            )
+                            result = await feishu_client.send_text_message(
+                                chat_id, error_message
+                            )
+                            print(f"[Session] New error message sent: {result}")
+                    else:
+                        # 没有现有消息，发送新卡片
+                        error_card = build_dynamic_progress_card(
+                            task_id=task_id,
+                            user_message=user_message,
+                            phase="fixing",
+                            progress=100,
+                            thought_summary="任务执行失败",
+                            recent_output=f"❌ 错误: {error_result[:100]}...",
+                            tool_count=tool_count,
+                            output_count=len(output_lines),
+                            status="failed",
+                            timeline=completed_phases,
+                        )
+                        result = await feishu_client.send_interactive_card(
+                            chat_id, error_card
+                        )
+                        print(f"[Session] New error card sent: {result}")
+                except Exception as e:
+                    print(f"[Session] Error sending error message: {e}")
+                    # 后备：发送简单文本消息
+                    try:
+                        error_message = f"## ❌ OpenCode 任务失败\n\n**任务ID:** `{task_id}`\n\n❌ 任务失败: {error_result[:100]}"
+                        await feishu_client.send_text_message(chat_id, error_message)
+                    except:
+                        pass
 
     except Exception as e:
         print(f"[Session] Error: {e}")
@@ -536,6 +946,36 @@ async def run_opencode_with_session(
             session_id,
             status=SessionStatus.FAILED,
         )
+
+        # 发送异常错误消息
+        if notify:
+            error_message = "## ⚠️ OpenCode 任务异常\n\n"
+            error_message += f"**任务ID:** `{task_id}`\n\n"
+            error_message += (
+                f"**异常信息:**\n{str(e)[:200]}{'...' if len(str(e)) > 200 else ''}\n\n"
+            )
+            error_message += "**执行统计:**\n"
+            error_message += f"• 📊 总输出行数: {len(output_lines)}\n"
+            error_message += f"• 🛠️ 工具使用次数: {tool_count}\n"
+            error_message += "• ⚠️ 状态: 执行异常\n\n"
+            error_message += "🔧 系统内部错误，请稍后重试或联系开发者。"
+
+            # 先删除之前的进度消息
+            if text_message_id:
+                try:
+                    await feishu_client.delete_message(text_message_id)
+                    print(
+                        "[Session] Deleted progress message before sending exception message"
+                    )
+                except Exception as delete_error:
+                    print(f"[Session] Error deleting progress message: {delete_error}")
+
+            # 发送异常消息
+            try:
+                result = await feishu_client.send_text_message(chat_id, error_message)
+                print(f"[Session] Exception message sent: {result}")
+            except Exception as send_error:
+                print(f"[Session] Failed to send exception message: {send_error}")
 
 
 async def handle_session_status(

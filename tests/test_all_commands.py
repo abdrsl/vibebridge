@@ -4,10 +4,10 @@
 """
 
 import json
-import requests
 import time
 import uuid
-import sys
+
+import requests
 
 
 def send_command(text: str):

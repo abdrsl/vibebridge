@@ -3,10 +3,10 @@
 测试真实的飞书卡片点击
 """
 
-import json
 import asyncio
+import json
+
 from src.legacy.feishu_card_handler import process_feishu_webhook
-from fastapi import BackgroundTasks
 
 
 class MockBackgroundTasks:
@@ -88,7 +88,7 @@ async def test_real_card_click():
 
     result = await process_feishu_webhook(card_click_webhook, background_tasks)
     print(f"\n   处理结果: {result}")
-    print(f"   预期: {{}} (空对象) 或 {{'error': '...', 'code': 200340}}")
+    print("   预期: {} (空对象) 或 {'error': '...', 'code': 200340}")
 
     # 测试另一个场景：卡片交互但value不是有效的JSON
     print("\n2. 测试无效的卡片交互:")
@@ -114,7 +114,7 @@ async def test_real_card_click():
 
     result2 = await process_feishu_webhook(invalid_card_webhook, background_tasks)
     print(f"   处理结果: {result2}")
-    print(f"   预期: {{}} (空对象，因为无法解析但返回成功)")
+    print("   预期: {} (空对象，因为无法解析但返回成功)")
 
     # 测试文本消息（不是卡片交互）
     print("\n3. 测试文本消息（不是卡片交互）:")
@@ -140,7 +140,7 @@ async def test_real_card_click():
 
     result3 = await process_feishu_webhook(text_message_webhook, background_tasks)
     print(f"   处理结果: {result3}")
-    print(f"   预期: 包含session_id和status的字典，不是空对象")
+    print("   预期: 包含session_id和status的字典，不是空对象")
 
     print("\n" + "=" * 60)
     print("测试完成")

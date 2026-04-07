@@ -3,10 +3,10 @@
 测试飞书卡片交互
 """
 
-import json
 import asyncio
+import json
+
 from src.legacy.feishu_card_handler import process_feishu_webhook
-from fastapi import BackgroundTasks
 
 
 class MockBackgroundTasks:
@@ -43,7 +43,7 @@ async def test_card_interaction():
 
     result1 = await process_feishu_webhook(challenge_body, background_tasks)
     print(f"   结果: {result1}")
-    print(f"   预期: {{'challenge': 'test_challenge_123'}}")
+    print("   预期: {'challenge': 'test_challenge_123'}")
 
     # 测试2: 普通文本消息
     print("\n2. 测试普通文本消息")

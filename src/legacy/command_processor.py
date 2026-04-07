@@ -587,7 +587,27 @@ class CommandProcessor:
         import asyncio
         import time
 
-        from ..feishu_websocket import restart_websocket_client, stop_websocket_client
+        # 尝试导入WebSocket客户端，如果失败则使用存根函数
+        try:
+            from ..feishu_websocket import (
+                restart_websocket_client,
+                stop_websocket_client,
+            )
+
+            WEBSOCKET_AVAILABLE = True
+        except ImportError as e:
+            print(f"[Command] WebSocket SDK not available: {e}")
+            WEBSOCKET_AVAILABLE = False
+
+            # 创建存根函数
+            async def restart_websocket_client():
+                print("[Command] WebSocket restart not available (SDK missing)")
+                return False  # 重启失败，因为SDK缺失
+
+            async def stop_websocket_client():
+                print("[Command] WebSocket stop not available (SDK missing)")
+                return True  # 停止"成功"，因为没有运行
+
         from .feishu_client import feishu_client
 
         # 发送初始消息并获取消息ID
@@ -623,7 +643,9 @@ class CommandProcessor:
         async def update_message(new_content: str, append: bool = True):
             """更新消息内容 - 通过删除旧消息并发送新消息来模拟更新"""
             nonlocal message_content, message_id
-            print(f"[Command] switch_feishu_mode: update_message called, new_content='{new_content}', append={append}, message_id={message_id}")
+            print(
+                f"[Command] switch_feishu_mode: update_message called, new_content='{new_content}', append={append}, message_id={message_id}"
+            )
             if append:
                 message_content += new_content + "\n"
             else:
@@ -635,11 +657,17 @@ class CommandProcessor:
                 try:
                     delete_result = await feishu_client.delete_message(old_message_id)
                     if delete_result and delete_result.get("code") == 0:
-                        print("[Command] switch_feishu_mode: old message deleted successfully")
+                        print(
+                            "[Command] switch_feishu_mode: old message deleted successfully"
+                        )
                     else:
-                        print(f"[Command] switch_feishu_mode: failed to delete old message: {delete_result}")
+                        print(
+                            f"[Command] switch_feishu_mode: failed to delete old message: {delete_result}"
+                        )
                 except Exception as e:
-                    print(f"[Command] switch_feishu_mode: error deleting old message: {e}")
+                    print(
+                        f"[Command] switch_feishu_mode: error deleting old message: {e}"
+                    )
 
             # 发送新消息
             try:
@@ -658,7 +686,9 @@ class CommandProcessor:
 
         # 在后台执行模式切换
         async def do_switch_mode():
-            print(f"[Command] switch_feishu_mode: do_switch_mode started for mode={mode}")
+            print(
+                f"[Command] switch_feishu_mode: do_switch_mode started for mode={mode}"
+            )
             try:
                 config = get_config_manager()
 
@@ -666,6 +696,16 @@ class CommandProcessor:
                 if mode not in ["websocket", "webhook"]:
                     await update_message(
                         f"🤔 咦？{mode} 是什么模式？我只认识 'websocket' 和 'webhook' 哦～"
+                    )
+                    return
+
+                # 检查WebSocket SDK是否可用
+                if mode == "websocket" and not WEBSOCKET_AVAILABLE:
+                    await update_message(
+                        "⚠️ **WebSocket功能不可用**\n"
+                        "❌ 缺少飞书官方SDK (lark_oapi)\n"
+                        "🔧 请安装: `pip install lark-oapi`\n"
+                        "📦 或使用Webhook模式"
                     )
                     return
 
@@ -760,6 +800,7 @@ class CommandProcessor:
         else:
             # 后备方案
             import asyncio
+
             task = asyncio.create_task(do_switch_mode())
             task.add_done_callback(
                 lambda t: print(f"[Command] switch_feishu_mode task done: {t}")

@@ -3,11 +3,11 @@
 测试成功的卡片交互
 """
 
-import json
 import asyncio
+import json
+
 from src.legacy.feishu_card_handler import process_feishu_webhook
-from fastapi import BackgroundTasks
-from src.legacy.session_manager import get_session_manager, SessionStatus
+from src.legacy.session_manager import SessionStatus, get_session_manager
 
 
 class MockBackgroundTasks:
@@ -78,7 +78,7 @@ async def test_successful_card_action():
 
     result = await process_feishu_webhook(card_action_body, background_tasks)
     print(f"   结果: {result}")
-    print(f"   预期: {{}} (空对象)")
+    print("   预期: {} (空对象)")
 
     # 测试成功的取消动作
     print("\n2. 测试成功的取消动作")
@@ -123,7 +123,7 @@ async def test_successful_card_action():
 
     result2 = await process_feishu_webhook(cancel_action_body, background_tasks)
     print(f"   结果: {result2}")
-    print(f"   预期: {{}} (空对象)")
+    print("   预期: {} (空对象)")
 
     # 清理测试数据
     await session_manager.close_session(session.session_id, SessionStatus.COMPLETED)

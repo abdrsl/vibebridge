@@ -3,8 +3,9 @@
 测试发送消息到服务器
 """
 
-import requests
 import json
+
+import requests
 
 # 模拟飞书webhook
 webhook_url = "http://127.0.0.1:8000/feishu/webhook/opencode"

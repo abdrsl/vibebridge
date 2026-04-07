@@ -74,23 +74,38 @@ class FeishuClient:
         import time
 
         if self._tenant_access_token and time.time() < self._token_expires_at - 60:
+            print(
+                f"[Feishu] Using cached access token, expires in {self._token_expires_at - time.time():.0f}s"
+            )
             return self._tenant_access_token
 
+        print(f"[Feishu] Getting new access token, app_id={self.app_id[:10]}...")
         url = f"{self.api_base}/auth/v3/tenant_access_token/internal"
         async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                url,
-                json={"app_id": self.app_id, "app_secret": self.app_secret},
-                timeout=30.0,
-            )
-            data = resp.json()
-            if data.get("code") == 0:
-                self._tenant_access_token = data.get("tenant_access_token")
-                import time
-
-                self._token_expires_at = time.time() + 7200
-                return self._tenant_access_token
-            return None
+            try:
+                resp = await client.post(
+                    url,
+                    json={
+                        "app_id": self.app_id,
+                        "app_secret": self.app_secret,
+                    },
+                    timeout=30.0,
+                )
+                data = resp.json()
+                print(f"[Feishu] Token response: {data}")
+                if data.get("code") == 0:
+                    self._tenant_access_token = data.get("tenant_access_token")
+                    self._token_expires_at = time.time() + 7200
+                    print(
+                        f"[Feishu] Got access token: {self._tenant_access_token[:20]}..., expires at {self._token_expires_at}"
+                    )
+                    return self._tenant_access_token
+                else:
+                    print(f"[Feishu] Failed to get access token: {data}")
+                    return None
+            except Exception as e:
+                print(f"[Feishu] Error getting access token: {e}")
+                return None
 
     def get_chat_id(self) -> str | None:
         return self.default_chat_id or None
@@ -133,6 +148,10 @@ class FeishuClient:
                 )
                 result = resp.json()
                 print(f"[Feishu] Text message send result: {result}")
+                if result.get("code") != 0:
+                    print(
+                        f"[Feishu] Error sending text message: code={result.get('code')}, msg={result.get('msg')}, data={result.get('data')}"
+                    )
                 return result
         except Exception as e:
             print(f"[Feishu] Error sending text message: {e}")
@@ -220,8 +239,10 @@ class FeishuClient:
                 result = resp.json()
                 print(f"[Feishu] Card send result status: {resp.status_code}")
                 print(f"[Feishu] Card send result keys: {list(result.keys())}")
-                if 'data' in result and isinstance(result['data'], dict):
-                    print(f"[Feishu] Card send data keys: {list(result['data'].keys())}")
+                if "data" in result and isinstance(result["data"], dict):
+                    print(
+                        f"[Feishu] Card send data keys: {list(result['data'].keys())}"
+                    )
                 print(f"[Feishu] Card send result: {result}")
                 return result
         except Exception as e:
@@ -430,6 +451,10 @@ class FeishuClient:
                 resp = await client.delete(url, headers=headers, timeout=30.0)
                 result = resp.json()
                 print(f"[Feishu] Delete message result: {result}")
+                if result.get("code") != 0:
+                    print(
+                        f"[Feishu] Error deleting message: code={result.get('code')}, msg={result.get('msg')}, data={result.get('data')}"
+                    )
                 return result
         except Exception as e:
             print(f"[Feishu] Error deleting message: {e}")
@@ -930,6 +955,151 @@ def build_session_status_card(
         "header": {
             "title": {"tag": "plain_text", "content": f"{config['emoji']} 任务状态"},
             "template": config["template"],
+        },
+    }
+
+
+def build_dynamic_progress_card(
+    task_id: str,
+    user_message: str,
+    phase: str = "analyzing",
+    progress: int = 0,
+    thought_summary: str = "",
+    recent_output: str = "",
+    tool_count: int = 0,
+    output_count: int = 0,
+    status: str = "running",
+    timeline: list[str] = None,
+) -> dict:
+    """构建动态进度卡片，支持阶段、进度条、思考摘要等
+
+    Args:
+        task_id: 任务ID
+        user_message: 用户原始消息
+        phase: 当前阶段 (analyzing, planning, reading, coding, testing, fixing, summarizing)
+        progress: 进度百分比 (0-100)
+        thought_summary: 思考摘要 (简短，不泄露内部推理)
+        recent_output: 最近输出/日志
+        tool_count: 工具使用次数
+        output_count: 输出行数
+        status: 状态 (pending, running, completed, failed)
+        timeline: 阶段时间线，用于显示已完成阶段
+    """
+    from datetime import datetime
+
+    # 阶段配置
+    phase_config = {
+        "analyzing": {"emoji": "🔍", "name": "分析需求", "color": "blue"},
+        "planning": {"emoji": "📋", "name": "规划步骤", "color": "blue"},
+        "reading": {"emoji": "📖", "name": "读取代码", "color": "purple"},
+        "coding": {"emoji": "💻", "name": "生成代码", "color": "green"},
+        "testing": {"emoji": "🧪", "name": "测试运行", "color": "yellow"},
+        "fixing": {"emoji": "🔧", "name": "修复问题", "color": "orange"},
+        "summarizing": {"emoji": "📝", "name": "整理结果", "color": "teal"},
+    }
+
+    phase_info = phase_config.get(
+        phase, {"emoji": "🔄", "name": phase, "color": "blue"}
+    )
+
+    # 状态配置
+    status_config = {
+        "pending": {"emoji": "⏳", "template": "grey", "text": "等待中"},
+        "running": {"emoji": "🔄", "template": "blue", "text": "执行中"},
+        "completed": {"emoji": "✅", "template": "green", "text": "已完成"},
+        "failed": {"emoji": "❌", "template": "red", "text": "失败"},
+    }
+    status_info = status_config.get(
+        status, {"emoji": "📋", "template": "grey", "text": status}
+    )
+
+    # 构建卡片元素
+    elements = []
+
+    # 标题和基本信息
+    elements.append(
+        {
+            "tag": "markdown",
+            "content": f"## {status_info['emoji']} **OpenCode 任务 {status_info['text']}**\n\n"
+            f"**任务ID:** `{task_id}`\n"
+            f"**任务:** {user_message[:120]}{'...' if len(user_message) > 120 else ''}",
+        }
+    )
+
+    elements.append({"tag": "hr"})
+
+    # 进度条（如果状态是运行中）
+    if status == "running":
+        progress_bar = "▰" * (progress // 10) + "▱" * (10 - progress // 10)
+        elements.append(
+            {
+                "tag": "markdown",
+                "content": f"### {phase_info['emoji']} **当前阶段: {phase_info['name']}**\n\n"
+                f"{progress_bar} **{progress}%**",
+            }
+        )
+    else:
+        elements.append(
+            {
+                "tag": "markdown",
+                "content": f"### {phase_info['emoji']} **当前阶段: {phase_info['name']}**",
+            }
+        )
+
+    # 思考摘要（如果有）
+    if thought_summary:
+        elements.append(
+            {
+                "tag": "markdown",
+                "content": f"**💭 思考摘要:**\n{thought_summary[:200]}{'...' if len(thought_summary) > 200 else ''}",
+            }
+        )
+
+    # 最近输出（如果有）
+    if recent_output:
+        truncated_output = (
+            recent_output[:400] if len(recent_output) > 400 else recent_output
+        )
+        elements.append(
+            {
+                "tag": "markdown",
+                "content": f"**📤 最近输出:**\n```\n{truncated_output}\n```{'...(已截断)' if len(recent_output) > 400 else ''}",
+            }
+        )
+
+    elements.append({"tag": "hr"})
+
+    # 统计信息
+    stats_content = "**📊 统计:**\n"
+    stats_content += f"• 🛠️ 工具使用: {tool_count} 次\n"
+    stats_content += f"• 📝 输出行数: {output_count}\n"
+    stats_content += f"• 🕐 更新时间: {datetime.now().strftime('%H:%M:%S')}"
+
+    if timeline:
+        stats_content += f"\n• 📋 已完成阶段: {' → '.join(timeline[:3])}"
+        if len(timeline) > 3:
+            stats_content += " → ..."
+
+    elements.append({"tag": "markdown", "content": stats_content})
+
+    # 添加阶段时间线（如果提供）
+    if timeline and len(timeline) > 0:
+        elements.append({"tag": "hr"})
+        timeline_text = "**⏱️ 阶段进展:**\n"
+        for i, stage in enumerate(timeline):
+            timeline_text += f"{i + 1}. ✅ {stage}\n"
+        timeline_text += f"**当前:** ▶️ {phase_info['name']}"
+        elements.append({"tag": "markdown", "content": timeline_text})
+
+    return {
+        "config": {"wide_screen_mode": True},
+        "elements": elements,
+        "header": {
+            "title": {
+                "tag": "plain_text",
+                "content": f"{phase_info['emoji']} OpenCode {phase_info['name']}",
+            },
+            "template": phase_info["color"],
         },
     }
 

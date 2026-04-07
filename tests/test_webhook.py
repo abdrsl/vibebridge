@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 import asyncio
-import httpx
 import json
+
+import httpx
 
 
 async def test_greeting():

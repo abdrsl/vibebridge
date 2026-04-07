@@ -18,10 +18,10 @@ print("=" * 60)
 # 检查环境变量
 print("\n📋 环境变量检查:")
 checks = {
-    'FEISHU_APP_ID': '应用 ID',
-    'FEISHU_APP_SECRET': '应用密钥',
-    'FEISHU_ENCRYPT_KEY': '加密密钥',
-    'FEISHU_VERIFICATION_TOKEN': '验证 Token',
+    "FEISHU_APP_ID": "应用 ID",
+    "FEISHU_APP_SECRET": "应用密钥",
+    "FEISHU_ENCRYPT_KEY": "加密密钥",
+    "FEISHU_VERIFICATION_TOKEN": "验证 Token",
 }
 
 all_ok = True
@@ -29,7 +29,7 @@ for key, name in checks.items():
     value = os.getenv(key)
     if value:
         # 隐藏敏感信息
-        masked = value[:4] + '...' + value[-4:] if len(value) > 8 else '***'
+        masked = value[:4] + "..." + value[-4:] if len(value) > 8 else "***"
         print(f"  ✅ {name}: {masked}")
     else:
         print(f"  ❌ {name}: 未设置")
@@ -37,7 +37,7 @@ for key, name in checks.items():
 
 # 检查 Webhook 配置
 print("\n📡 Webhook 配置检查:")
-webhook = os.getenv('FEISHU_BOT_WEBHOOK', '')
+webhook = os.getenv("FEISHU_BOT_WEBHOOK", "")
 if webhook:
     print(f"  ✅ Webhook URL: {webhook[:50]}...")
 else:
@@ -45,9 +45,9 @@ else:
 
 # 检查默认聊天 ID
 print("\n💬 默认聊天 ID:")
-chat_id = os.getenv('FEISHU_DEFAULT_CHAT_ID', '')
+chat_id = os.getenv("FEISHU_DEFAULT_CHAT_ID", "")
 if chat_id:
-    masked = chat_id[:10] + '...' if len(chat_id) > 10 else chat_id
+    masked = chat_id[:10] + "..." if len(chat_id) > 10 else chat_id
     print(f"  ✅ {masked}")
 else:
     print(f"  ⚠️  未设置（可选）")
@@ -96,37 +96,34 @@ print("=" * 60)
 try:
     import httpx
     import asyncio
-    
+
     async def test_connection():
-        app_id = os.getenv('FEISHU_APP_ID')
-        app_secret = os.getenv('FEISHU_APP_SECRET')
-        
+        app_id = os.getenv("FEISHU_APP_ID")
+        app_secret = os.getenv("FEISHU_APP_SECRET")
+
         if not app_id or not app_secret:
             print("  ❌ 缺少 App ID 或 App Secret，跳过连接测试")
             return
-        
+
         print("  🔄 正在获取访问令牌...")
-        
+
         async with httpx.AsyncClient() as client:
             resp = await client.post(
-                'https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal',
-                json={
-                    'app_id': app_id,
-                    'app_secret': app_secret
-                },
-                timeout=10.0
+                "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
+                json={"app_id": app_id, "app_secret": app_secret},
+                timeout=10.0,
             )
-            
+
             data = resp.json()
-            if data.get('code') == 0:
+            if data.get("code") == 0:
                 print("  ✅ 访问令牌获取成功")
                 print(f"  📊 过期时间: {data.get('expire', '未知')} 秒")
             else:
                 print(f"  ❌ 获取令牌失败: {data.get('msg', '未知错误')}")
                 print(f"     错误码: {data.get('code')}")
-    
+
     asyncio.run(test_connection())
-    
+
 except ImportError:
     print("  ⚠️  未安装 httpx，跳过连接测试")
     print("     安装: pip install httpx")

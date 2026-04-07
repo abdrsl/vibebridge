@@ -1,0 +1,157 @@
+# OpenClaw/OpenCode 统一审批系统集成配置
+# 添加到 opencode-feishu-bridge 的配置文件
+
+# ============================================
+# 飞书机器人配置
+# ============================================
+
+# 机器人A - Webhook (发送审批消息)
+FEISHU_BOT_A:
+  name: "审批通知机器人"
+  type: webhook
+  webhook_url: "${FEISHU_BOT_A_WEBHOOK}"  # 从环境变量读取
+  secret: "${FEISHU_BOT_A_SECRET}"        # 从环境变量读取
+  enabled: true
+
+# 机器人B - WebSocket/事件订阅 (OpenClaw交互)
+FEISHU_BOT_B:
+  name: "OpenClaw交互机器人"
+  type: websocket
+  app_id: "${FEISHU_APP_ID}"
+  app_secret: "${FEISHU_APP_SECRET}"
+  verification_token: "${FEISHU_VERIFICATION_TOKEN}"
+  encrypt_key: "${FEISHU_ENCRYPT_KEY}"
+  enabled: true
+
+# ============================================
+# 审批服务器配置
+# ============================================
+
+APPROVAL_SERVER:
+  host: "0.0.0.0"
+  port: 8000
+  
+  # WebSocket 端点
+  ws_endpoint: "/ws/approval"
+  
+  # HTTP API 端点
+  api_prefix: "/api/approval"
+  webhook_endpoint: "/webhook/feishu"
+  
+  # 超时设置
+  approval_timeout: 3600  # 秒
+  
+  # 通知模式: webhook | terminal | auto
+  notify_mode: "webhook"
+
+# ============================================
+# OpenClaw 集成配置
+# ============================================
+
+OPENCLAW_INTEGRATION:
+  enabled: true
+  
+  # WebSocket 连接
+  websocket:
+    enabled: true
+    endpoint: "/ws/approval"
+    heartbeat_interval: 30  # 秒
+  
+  # 白名单用户
+  whitelist:
+    - "ou_REDACTED_OPEN_ID"
+  
+  # 风险等级映射
+  risk_levels:
+    low:
+      auto_approve: true
+      notify: false
+    medium:
+      auto_approve: false
+      notify: true
+      timeout: 1800
+    high:
+      auto_approve: false
+      notify: true
+      timeout: 3600
+      require_reason: true
+    critical:
+      auto_approve: false
+      notify: true
+      timeout: 7200
+      require_reason: true
+      require_secondary_approval: true
+
+# ============================================
+# OpenCode 集成配置
+# ============================================
+
+OPENCODE_INTEGRATION:
+  enabled: true
+  
+  # HTTP API
+  http_api:
+    enabled: true
+    prefix: "/api/approval"
+    auth_required: true
+    api_key: "${OPENCODE_API_KEY}"
+  
+  # 回调配置
+  callback:
+    enabled: true
+    default_timeout: 3600
+    retry_count: 3
+    retry_interval: 5
+
+# ============================================
+# 日志配置
+# ============================================
+
+LOGGING:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  
+  handlers:
+    console:
+      enabled: true
+    file:
+      enabled: true
+      path: "logs/approval.log"
+      max_size: "10MB"
+      backup_count: 5
+
+# ============================================
+# 数据库配置 (可选)
+# ============================================
+
+DATABASE:
+  enabled: false
+  type: "sqlite"  # sqlite | postgresql
+  
+  sqlite:
+    path: "data/approvals.db"
+  
+  postgresql:
+    host: "localhost"
+    port: 5432
+    database: "approvals"
+    username: "${DB_USER}"
+    password: "${DB_PASSWORD}"
+
+# ============================================
+# 使用说明
+# ============================================
+# 
+# 1. 复制此文件到 opencode-feishu-bridge/config.yaml
+# 2. 在 .env 中配置环境变量:
+#    - FEISHU_BOT_A_WEBHOOK
+#    - FEISHU_BOT_A_SECRET
+#    - FEISHU_APP_ID
+#    - FEISHU_APP_SECRET
+#    - FEISHU_VERIFICATION_TOKEN
+#
+# 3. 启动桥接服务器:
+#    python -m src.main
+#
+# 4. 测试审批系统:
+#    curl http://localhost:8000/api/approval/pending

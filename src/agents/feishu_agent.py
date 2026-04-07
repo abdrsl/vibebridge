@@ -143,8 +143,6 @@ class FeishuAgent(Agent):
     async def get_access_token(self) -> str:
         """Get Feishu access token."""
         try:
-            from src.legacy.feishu_client import feishu_client
-
             # The feishu_client might have a method to get token
             # If not, we can call the internal method
             logger.debug(

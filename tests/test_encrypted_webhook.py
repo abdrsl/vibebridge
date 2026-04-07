@@ -4,14 +4,15 @@
 测试系统处理加密消息的能力
 """
 
+import base64
+import hashlib
+import json
 import os
 import sys
-import json
 import time
-import hashlib
-import base64
-import requests
 from pathlib import Path
+
+import requests
 
 # 添加项目目录到路径
 project_dir = Path(__file__).parent
@@ -179,7 +180,7 @@ def test_encrypted_webhook():
             if result.get("challenge") == challenge_data["challenge"]:
                 print("  ✅ URL验证成功")
             else:
-                print(f"  ❌ URL验证失败: 挑战不匹配")
+                print("  ❌ URL验证失败: 挑战不匹配")
                 print(f"     期望: {challenge_data['challenge']}")
                 print(f"     实际: {result.get('challenge')}")
                 return False

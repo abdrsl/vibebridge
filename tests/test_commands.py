@@ -3,8 +3,8 @@
 测试自定义命令
 """
 
-import json
 import asyncio
+import json
 import sys
 
 sys.path.insert(0, ".")
@@ -21,7 +21,7 @@ async def test_commands():
         # Simulate match
         match = processor.match_command(cmd_name)
         if match:
-            print(f"Match success")
+            print("Match success")
             # Execute command (requires chat_id and user_id)
             # Use dummy IDs
             result = await processor.execute_command(
@@ -29,7 +29,7 @@ async def test_commands():
             )
             print(f"Result: {result}")
         else:
-            print(f"Match failed")
+            print("Match failed")
 
 
 if __name__ == "__main__":

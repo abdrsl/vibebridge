@@ -3,9 +3,9 @@
 测试OpenCode集成功能
 """
 
-import requests
-import json
 import time
+
+import requests
 
 
 def test_opencode_integration():
@@ -60,7 +60,7 @@ def test_opencode_integration():
                     print(f"   ❌ 获取任务状态失败: {status_response.status_code}")
 
                 # 测试3: 列出所有任务
-                print(f"\n3. 列出所有OpenCode任务:")
+                print("\n3. 列出所有OpenCode任务:")
                 list_response = requests.get(
                     f"{base_url}/opencode/tasks?limit=5", timeout=10
                 )
@@ -96,9 +96,10 @@ def test_opencode_integration():
         print(f"   错误: {e}")
 
     # 测试5: 直接测试OpenCode管理器
-    print(f"\n5. 直接测试OpenCode执行:")
+    print("\n5. 直接测试OpenCode执行:")
     try:
         import asyncio
+
         from src.legacy.opencode_integration import opencode_manager
 
         async def test_direct_opencode():
@@ -132,7 +133,7 @@ def test_opencode_integration():
     try:
         with open("server.log", "r") as f:
             lines = f.readlines()
-            print(f"   最近OpenCode相关日志:")
+            print("   最近OpenCode相关日志:")
             opencode_logs = []
             for line in lines[-30:]:
                 if "OpenCode" in line or "opencode" in line.lower():

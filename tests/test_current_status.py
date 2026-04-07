@@ -3,9 +3,10 @@
 测试当前服务器状态
 """
 
-import requests
 import json
 import time
+
+import requests
 
 # 测试服务器是否响应
 print("1. 测试服务器健康检查...")
@@ -63,7 +64,7 @@ time.sleep(1)
 try:
     with open("server.log", "r") as f:
         lines = f.readlines()
-        print(f"   最后10行日志:")
+        print("   最后10行日志:")
         for line in lines[-10:]:
             print(f"   {line.strip()}")
 except Exception as e:

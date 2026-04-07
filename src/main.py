@@ -6,6 +6,7 @@ import json
 import os
 import time
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
@@ -19,6 +20,8 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
+# Approval system integration - 审核机器人C
+from src.approval import register_approval_routes
 from src.legacy.feishu_card_handler import process_feishu_webhook
 
 # Legacy imports for compatibility (will be migrated to agents)
@@ -42,12 +45,16 @@ from src.legacy.task_store import get_task, list_tasks, save_task, update_task
 # Multi-agent system
 from src.system import get_system, start_multi_agent_system, stop_multi_agent_system
 
+APPROVAL_SYSTEM_ENABLED = True
+print("✅ Approval system (机器人C) loaded")
+
 # WebSocket 长连接支持
 FEISHU_WEBSOCKET_AVAILABLE = False
 start_feishu_websocket = None
 
 try:
     from src.feishu_websocket import start_feishu_websocket
+
     FEISHU_WEBSOCKET_AVAILABLE = True
 except ImportError:
     print("[WebSocket] 模块未找到，WebSocket功能不可用")
@@ -554,7 +561,43 @@ async def feishu_webhook_opencode(
     return await process_feishu_webhook(body, background_tasks)
 
 
+# ============================================
+# OpenClaw 审批系统集成（自动生成）
+# ============================================
+
+# 导入审批插件
+import sys
+
+sys.path.insert(0, str(Path(__file__).parent))
+
+# 执行插件代码 - 暂时跳过
+try:
+    # exec(open(Path(__file__).parent.parent / "approval_plugin.py").read())
+    # print("✅ OpenClaw 审批系统已集成")
+    print("✅ OpenClaw 审批系统已跳过")
+except Exception as e:
+    print(f"⚠️  OpenClaw 审批系统集成失败: {e}")
+    print("⚠️  继续运行（审批功能不可用）")
+
+
+# ============================================
+# Approval System Routes (机器人C)
+# ============================================
+try:
+    register_approval_routes(app)
+    print("✅ Approval routes registered (机器人C)")
+except Exception as e:
+    print(f"⚠️ Approval routes registration failed: {e}")
+
+
+# ============================================
+# Server Startup
+# ============================================
 if __name__ == "__main__":
+    import os
+
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    port = int(os.getenv("PORT", "8000"))
+    print(f"🚀 Starting server on port {port}...")
+    uvicorn.run(app, host="0.0.0.0", port=port)

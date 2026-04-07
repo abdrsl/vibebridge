@@ -5,15 +5,14 @@
 
 import asyncio
 import json
-from datetime import datetime
-from src.legacy.session_manager import get_session_manager, SessionStatus
+
 from src.legacy.feishu_webhook_handler import (
-    handle_feishu_message,
-    handle_session_status,
-    handle_session_cancel,
     handle_card_action,
+    handle_feishu_message,
+    handle_session_cancel,
+    handle_session_status,
 )
-from fastapi import BackgroundTasks
+from src.legacy.session_manager import SessionStatus, get_session_manager
 
 
 class MockBackgroundTasks:
@@ -67,7 +66,7 @@ async def test_session_manager():
         card_sent=True,
     )
 
-    print(f"\n2. 添加消息后:")
+    print("\n2. 添加消息后:")
     print(f"   消息数量: {len(session.messages)}")
     print(f"   最后消息: {session.messages[-1].content[:50]}...")
 
@@ -79,13 +78,13 @@ async def test_session_manager():
     )
 
     updated = await manager.get_session(session.session_id)
-    print(f"\n3. 更新状态后:")
+    print("\n3. 更新状态后:")
     print(f"   状态: {updated.status}")
     print(f"   任务ID: {updated.current_task_id}")
 
     # 4. 列出sessions
     sessions = await manager.list_sessions(chat_id="test_chat_123")
-    print(f"\n4. 列出sessions:")
+    print("\n4. 列出sessions:")
     print(f"   数量: {len(sessions)}")
     for s in sessions:
         print(f"   - {s['session_id']}: {s['status']}")
@@ -95,12 +94,12 @@ async def test_session_manager():
         session.session_id,
         SessionStatus.COMPLETED,
     )
-    print(f"\n5. 关闭session:")
+    print("\n5. 关闭session:")
     print(f"   成功: {success}")
 
     # 6. 清理过期session
     cleaned = await manager.cleanup_expired_sessions()
-    print(f"\n6. 清理过期session:")
+    print("\n6. 清理过期session:")
     print(f"   清理数量: {cleaned}")
 
     print("\n" + "=" * 60)

@@ -3,11 +3,11 @@
 测试完整的卡片流程
 """
 
-import json
 import asyncio
+import json
+
 from src.legacy.feishu_card_handler import process_feishu_webhook
-from fastapi import BackgroundTasks
-from src.legacy.session_manager import get_session_manager, SessionStatus
+from src.legacy.session_manager import SessionStatus, get_session_manager
 
 
 class MockBackgroundTasks:
@@ -111,7 +111,7 @@ async def test_full_card_flow():
 
     result2 = await process_feishu_webhook(card_click, background_tasks)
     print(f"   响应: {result2}")
-    print(f"   预期: {{}} (空对象)")
+    print("   预期: {} (空对象)")
 
     # 步骤3: 用户点击取消卡片
     print("\n3. 用户点击取消卡片:")
@@ -156,7 +156,7 @@ async def test_full_card_flow():
 
     result3 = await process_feishu_webhook(cancel_click, background_tasks)
     print(f"   响应: {result3}")
-    print(f"   预期: {{}} (空对象)")
+    print("   预期: {} (空对象)")
 
     # 清理
     await session_manager.close_session(session_id, SessionStatus.COMPLETED)

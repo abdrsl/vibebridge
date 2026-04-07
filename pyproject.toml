@@ -1,6 +1,6 @@
 [project]
 name = "opencode-feishu-bridge"
-version = "1.0.1"
+version = "1.0.2"
 description = "A bridge between Feishu (Lark) and OpenCode for AI-powered development tasks"
 readme = "README.md"
 requires-python = ">=3.10"

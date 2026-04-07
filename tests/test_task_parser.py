@@ -3,6 +3,7 @@
 """
 
 import json
+
 from src.legacy.task_parser import extract_text_from_feishu_payload
 
 
