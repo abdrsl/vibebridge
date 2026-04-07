@@ -4,14 +4,14 @@
 监控隧道URL变化并自动通知Feishu
 """
 
+import asyncio
 import os
 import sys
 import time
-import json
-import asyncio
-import requests
 from pathlib import Path
 from typing import Optional
+
+import requests
 
 # 添加项目目录到路径
 project_dir = Path(__file__).parent.parent
@@ -136,7 +136,7 @@ class TunnelMonitor:
                 )
 
                 if result.get("code") == 0:
-                    print(f"[TunnelMonitor] ✅ URL变更通知已发送到Feishu")
+                    print("[TunnelMonitor] ✅ URL变更通知已发送到Feishu")
                 else:
                     print(f"[TunnelMonitor] ❌ 发送通知失败: {result}")
             else:
@@ -160,7 +160,7 @@ class TunnelMonitor:
                 )
 
                 if result.get("code") == 0:
-                    print(f"[TunnelMonitor] ✅ 启动通知已发送到Feishu")
+                    print("[TunnelMonitor] ✅ 启动通知已发送到Feishu")
                 else:
                     print(f"[TunnelMonitor] ❌ 发送通知失败: {result}")
 
@@ -191,7 +191,7 @@ class TunnelMonitor:
         print("=" * 70)
         print("🔄 隧道监控服务已启动")
         print("=" * 70)
-        print(f"\n📊 配置信息:")
+        print("\n📊 配置信息:")
         print(f"   检查间隔: {self.check_interval}秒")
         print(f"   默认Chat ID: {self.default_chat_id or '未设置'}")
         print(f"   URL文件: {self.url_file}")
@@ -224,14 +224,14 @@ class TunnelMonitor:
                             self.last_url = current_url
                             is_first_run = False
                         else:
-                            print(f"[TunnelMonitor] ⚠️ 新URL暂时不可用，等待下次检查")
+                            print("[TunnelMonitor] ⚠️ 新URL暂时不可用，等待下次检查")
                     else:
                         # 定期检查URL是否仍然可用
                         if not await self._check_tunnel_health(current_url):
-                            print(f"[TunnelMonitor] ⚠️ 当前URL不可用，等待自动切换...")
+                            print("[TunnelMonitor] ⚠️ 当前URL不可用，等待自动切换...")
                 else:
                     if self.last_url:
-                        print(f"[TunnelMonitor] ⚠️ URL文件不存在，隧道可能已停止")
+                        print("[TunnelMonitor] ⚠️ URL文件不存在，隧道可能已停止")
                         self.last_url = None
 
                 await asyncio.sleep(self.check_interval)

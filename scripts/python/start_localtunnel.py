@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
+import re
 import subprocess
 import sys
-import time
-import re
 
 
 def start_localtunnel(port=8000):
@@ -31,7 +30,7 @@ def start_localtunnel(port=8000):
         # Write URL to file for tunnel manager
         with open("logs/current_tunnel_url.txt", "w") as f:
             f.write(url)
-        print(f"URL saved to logs/current_tunnel_url.txt")
+        print("URL saved to logs/current_tunnel_url.txt")
         return url, proc
     else:
         print("Failed to get URL from localtunnel")

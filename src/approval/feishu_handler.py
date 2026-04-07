@@ -7,10 +7,10 @@ import json
 import os
 from typing import Optional
 
-from src.approval.manager import (
-    approval_manager,
+from .manager import (
     ApprovalStatus,
     FeishuApprovalCardBuilder,
+    approval_manager,
 )
 
 
@@ -184,8 +184,19 @@ class FeishuApprovalHandler:
 
         # 解析审批命令
         # 格式: "批准 APR-xxx" 或 "拒绝 APR-xxx [理由]"
-        if text.startswith("批准 ") or text.startswith("通过 "):
-            parts = text.split()
+        # 也支持带引号或回复前缀的格式，如: 回复"批准 APR-xxx
+
+        # 清理文本：移除常见的回复前缀
+        clean_text = text
+        reply_prefixes = ['回复"', "回复：", "回复:", "回复 "]
+        for prefix in reply_prefixes:
+            if clean_text.startswith(prefix):
+                clean_text = clean_text[len(prefix) :]
+                break
+
+        # 检查批准命令
+        if clean_text.startswith("批准 ") or clean_text.startswith("通过 "):
+            parts = clean_text.split()
             if len(parts) >= 2:
                 approval_id = parts[1]
                 request = approval_manager.approve(
@@ -195,8 +206,9 @@ class FeishuApprovalHandler:
                     return {"success": True, "message": f"✅ 已批准: {approval_id}"}
                 return {"success": False, "error": "审批请求不存在或已处理"}
 
-        elif text.startswith("拒绝 ") or text.startswith("驳回 "):
-            parts = text.split(maxsplit=2)
+        # 检查拒绝命令
+        elif clean_text.startswith("拒绝 ") or clean_text.startswith("驳回 "):
+            parts = clean_text.split(maxsplit=2)
             if len(parts) >= 2:
                 approval_id = parts[1]
                 reason = parts[2] if len(parts) > 2 else "通过文字消息拒绝"

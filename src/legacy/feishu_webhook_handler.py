@@ -414,6 +414,8 @@ async def run_opencode_with_session(
     current_phase = "analyzing"
     completed_phases = []
     thought_summaries = []
+    send_failures = 0  # 消息发送失败计数器
+    max_failures = 5  # 最大失败次数，超过则禁用更新
 
     # 阶段和进度追踪
     def estimate_phase_and_progress():
@@ -490,9 +492,18 @@ async def run_opencode_with_session(
             output_lines, \
             update_count, \
             current_phase, \
-            completed_phases
+            completed_phases, \
+            send_failures, \
+            max_failures
 
         if not output_lines:
+            return
+
+        # 如果发送失败次数过多，跳过更新以避免重复失败
+        if send_failures >= max_failures:
+            print(
+                f"[Session] Too many send failures ({send_failures}/{max_failures}), skipping update"
+            )
             return
 
         # 估算阶段和进度
@@ -530,6 +541,7 @@ async def run_opencode_with_session(
                     if update_result and update_result.get("code") == 0:
                         # 卡片更新成功
                         update_count += 1
+                        send_failures = 0  # 重置失败计数器
                         print(
                             f"[Session] Card updated successfully, ID: {card_message_id}"
                         )
@@ -537,6 +549,7 @@ async def run_opencode_with_session(
                     else:
                         # 卡片更新失败，尝试发送新卡片
                         print(f"[Session] Failed to update card: {update_result}")
+                        send_failures += 1  # 递增失败计数器
                         # 清除旧message_id，尝试发送新卡片
                         card_message_id = None
                 else:
@@ -550,13 +563,17 @@ async def run_opencode_with_session(
                             print(
                                 f"[Session] New card sent successfully, ID: {card_message_id}"
                             )
+                            send_failures = 0  # 重置失败计数器
                             return
                         else:
                             print("[Session] No message ID in card result")
+                            send_failures += 1  # 递增失败计数器
                     else:
                         print(f"[Session] Failed to send new card: {result}")
+                        send_failures += 1  # 递增失败计数器
             except Exception as e:
                 print(f"[Session] Error with card update: {e}")
+                send_failures += 1  # 递增失败计数器
 
         # 卡片更新失败，回退到文本消息更新
         # 构建文本消息内容
@@ -589,10 +606,12 @@ async def run_opencode_with_session(
                     print(
                         f"[Session] Text message updated successfully, ID: {text_message_id}"
                     )
+                    send_failures = 0  # 重置失败计数器
                     return
                 else:
                     # 文本更新失败
                     print(f"[Session] Failed to update text message: {update_result}")
+                    send_failures += 1  # 递增失败计数器
                     # 尝试删除旧消息（如果还存在）
                     try:
                         await feishu_client.delete_message(text_message_id)
@@ -601,6 +620,7 @@ async def run_opencode_with_session(
                     text_message_id = None
             except Exception as e:
                 print(f"[Session] Error updating text message: {e}")
+                send_failures += 1  # 递增失败计数器
 
         # 发送新文本消息
         try:
@@ -614,12 +634,16 @@ async def run_opencode_with_session(
                     print(
                         f"[Session] New text message sent successfully, ID: {text_message_id}"
                     )
+                    send_failures = 0  # 重置失败计数器
                 else:
                     print("[Session] No message ID in text result")
+                    send_failures += 1  # 递增失败计数器
             else:
                 print(f"[Session] Failed to send new text message: {result}")
+                send_failures += 1  # 递增失败计数器
         except Exception as e:
             print(f"[Session] Failed to send new text message: {e}")
+            send_failures += 1  # 递增失败计数器
 
     try:
         if notify:
@@ -651,6 +675,7 @@ async def run_opencode_with_session(
                     print(f"[Session] Card message ID: {card_message_id}")
                 else:
                     print(f"[Session] Failed to send initial card, result: {result}")
+                    send_failures += 1  # 递增失败计数器
                     # 卡片发送失败，尝试发送文本消息
                     initial_message = f"## 🚀 OpenCode 任务已启动\n\n**任务ID:** `{task_id}`\n\n**开始执行...**\n\n⏳ 正在初始化，请稍候～"
                     result = await feishu_client.send_text_message(
@@ -660,13 +685,16 @@ async def run_opencode_with_session(
 
                     if result and result.get("code") == 0:
                         text_message_id = result.get("data", {}).get("message_id")
+                        send_failures = 0  # 重置失败计数器（文本发送成功）
                         print(f"[Session] Text message ID: {text_message_id}")
                     else:
                         print(
                             f"[Session] Failed to send initial text message, result: {result}"
                         )
+                        send_failures += 1  # 递增失败计数器（文本发送也失败）
             except Exception as e:
                 print(f"[Session] Error sending initial message: {e}")
+                send_failures += 1  # 递增失败计数器
                 # 即使发送失败，仍然继续执行任务（不在飞书中显示实时更新）
 
         # 实时处理事件并更新显示

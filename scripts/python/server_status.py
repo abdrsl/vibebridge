@@ -8,7 +8,6 @@ print("🖥️  服务器状态报告")
 print("=" * 70)
 
 import subprocess
-import json
 
 # 1. 检查进程
 print("\n📊 进程状态:")

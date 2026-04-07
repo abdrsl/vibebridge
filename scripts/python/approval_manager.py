@@ -15,16 +15,17 @@
 #   5. 飞书 Webhook 回调到桥接服务器
 #   6. 桥接服务器通知 OpenClaw 审批结果
 
+import asyncio
+import base64
+import hashlib
+import hmac
 import json
 import time
-import asyncio
-import hashlib
-import base64
-import hmac
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Callable
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
+from datetime import datetime
 from enum import Enum
+from typing import Dict, List, Optional
+
 import aiohttp
 from aiohttp import web
 
@@ -301,7 +302,7 @@ class ApprovalManager:
             try:
                 await ws.send_json(message)
                 self.log(f"📤 已通知 OpenClaw: {request.approval_id}")
-            except:
+            except Exception:
                 disconnected.append(ws)
 
         # 清理断开的连接

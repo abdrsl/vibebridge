@@ -4,12 +4,11 @@ OpenCode技能：文件发送到飞书
 这个技能允许OpenCode在执行任务时发送文件到飞书。
 """
 
-import os
-import json
 from pathlib import Path
-from typing import Dict, Any, Optional
-from src.legacy.temp_file_manager import temp_file_manager
+from typing import Any, Dict
+
 from src.legacy.file_sender import file_sender
+from src.legacy.temp_file_manager import temp_file_manager
 
 
 class FileSendSkill:

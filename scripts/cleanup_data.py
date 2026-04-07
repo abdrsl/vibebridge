@@ -4,11 +4,9 @@
 用于清理测试数据和历史数据
 """
 
-import os
 import json
-import shutil
-from pathlib import Path
 from datetime import datetime, timedelta
+from pathlib import Path
 
 
 def cleanup_old_data(days_old=7):

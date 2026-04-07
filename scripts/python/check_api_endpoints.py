@@ -76,12 +76,12 @@ async def test_api_endpoints():
                             if task_response.status == 200:
                                 task_details = await task_response.json()
                                 print("   ✅ Task details retrieved")
-                                print(
-                                    f"   Status: {task_details.get('item', {}).get('status')}"
+                                status = task_details.get("item", {}).get("status")
+                                print(f"   Status: {status}")
+                                user_message = task_details.get("item", {}).get(
+                                    "user_message", ""
                                 )
-                                print(
-                                    f"   User message: {task_details.get('item', {}).get('user_message', '')[:50]}..."
-                                )
+                                print(f"   User message: {user_message[:50]}...")
                             else:
                                 print(
                                     f"   ❌ Failed to get task details: {task_response.status}"

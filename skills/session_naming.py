@@ -12,12 +12,10 @@ Usage:
 - Names are cached for consistency
 """
 
-import re
-from typing import Optional, List, Dict, Any
-from dataclasses import dataclass, field
-from collections import defaultdict
 import hashlib
-import json
+import re
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
 
 
 @dataclass

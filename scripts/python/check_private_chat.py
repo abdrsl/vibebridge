@@ -6,6 +6,7 @@
 
 import os
 import sys
+
 from dotenv import load_dotenv
 
 # 加载环境变量
@@ -41,7 +42,7 @@ webhook = os.getenv("FEISHU_BOT_WEBHOOK", "")
 if webhook:
     print(f"  ✅ Webhook URL: {webhook[:50]}...")
 else:
-    print(f"  ⚠️  Webhook URL: 未设置（使用默认端点）")
+    print("  ⚠️  Webhook URL: 未设置（使用默认端点）")
 
 # 检查默认聊天 ID
 print("\n💬 默认聊天 ID:")
@@ -50,7 +51,7 @@ if chat_id:
     masked = chat_id[:10] + "..." if len(chat_id) > 10 else chat_id
     print(f"  ✅ {masked}")
 else:
-    print(f"  ⚠️  未设置（可选）")
+    print("  ⚠️  未设置（可选）")
 
 # 提供配置建议
 print("\n" + "=" * 60)
@@ -94,8 +95,9 @@ print("🧪 连接测试")
 print("=" * 60)
 
 try:
-    import httpx
     import asyncio
+
+    import httpx
 
     async def test_connection():
         app_id = os.getenv("FEISHU_APP_ID")

@@ -11,8 +11,9 @@ OpenClaw/OpenCode 审批系统集成模块
 
 import os
 import sys
-import yaml
 from pathlib import Path
+
+import yaml
 
 # 添加当前目录到路径
 sys.path.insert(0, str(Path(__file__).parent))
@@ -115,7 +116,7 @@ def setup_approval_system(app, config: dict = None) -> ApprovalManager:
     # WebSocket
     app.router.add_get(ws_endpoint, ws_handler.handle)
 
-    print(f"✅ 审批系统已启动:")
+    print("✅ 审批系统已启动:")
     print(f"   - WebSocket: {ws_endpoint}")
     print(f"   - HTTP API: {api_prefix}")
     print(f"   - Webhook: {webhook_endpoint}")
@@ -136,7 +137,6 @@ def create_simple_app():
 
 # 如果直接运行此文件，启动测试服务器
 if __name__ == "__main__":
-    import asyncio
     from aiohttp import web
 
     print("🚀 启动审批系统测试服务器...")

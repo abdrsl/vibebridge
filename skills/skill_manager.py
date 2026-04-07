@@ -16,14 +16,10 @@ Usage:
 
 import importlib
 import importlib.util
-import json
-import os
 import sys
-from pathlib import Path
-from typing import Dict, Any, List, Optional, Callable
 from dataclasses import dataclass, field
-import subprocess
-import tempfile
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 
 @dataclass
@@ -335,7 +331,7 @@ if __name__ == "__main__":
             elif const["has_warnings"]:
                 print(f"  ⚠️  Warnings: {len(const['warnings'])}")
             else:
-                print(f"  ✅ Constitution check passed")
+                print("  ✅ Constitution check passed")
 
         if not result["allowed"]:
             print(f"  Blocked due to: {', '.join(result['errors'])}")

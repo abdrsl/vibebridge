@@ -6,9 +6,9 @@ Feishu配置检查脚本
 
 import os
 import sys
-import json
-import requests
 from pathlib import Path
+
+import requests
 
 # 添加项目目录到路径
 project_dir = Path(__file__).parent.parent

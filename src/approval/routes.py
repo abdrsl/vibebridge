@@ -7,8 +7,8 @@ from typing import Optional
 from fastapi import Request
 from pydantic import BaseModel
 
-from src.approval.feishu_handler import feishu_approval_handler
-from src.approval.manager import approval_manager
+from .feishu_handler import feishu_approval_handler
+from .manager import approval_manager
 
 
 # 请求模型
@@ -39,10 +39,7 @@ async def api_create_approval(request: Request):
         command = data.get("command")
 
         if not user_id or not command:
-            return {
-                "success": False,
-                "error": "缺少必需参数: user_id 和 command"
-            }
+            return {"success": False, "error": "缺少必需参数: user_id 和 command"}
 
         # 创建审批请求
         approval = approval_manager.create_approval(
@@ -52,22 +49,20 @@ async def api_create_approval(request: Request):
             risk_level=data.get("risk_level", "medium"),
             source=data.get("source", "opencode"),
             callback_url=data.get("callback_url"),
-            expires_in=data.get("expires_in", 3600)
+            expires_in=data.get("expires_in", 3600),
         )
 
         # 发送到飞书
         chat_id = data.get("chat_id")
         await feishu_approval_handler.send_approval_request(
-            user_id=user_id,
-            approval_id=approval.approval_id,
-            chat_id=chat_id
+            user_id=user_id, approval_id=approval.approval_id, chat_id=chat_id
         )
 
         return {
             "success": True,
             "approval_id": approval.approval_id,
             "status": approval.status.value,
-            "expires_at": approval.expires_at
+            "expires_at": approval.expires_at,
         }
 
     except Exception as e:
@@ -83,10 +78,7 @@ async def api_get_approval(request: Request):
     if not approval:
         return {"success": False, "error": "审批请求不存在"}
 
-    return {
-        "success": True,
-        "approval": approval_manager.to_dict(approval)
-    }
+    return {"success": True, "approval": approval_manager.to_dict(approval)}
 
 
 async def api_list_pending(request: Request):
@@ -96,7 +88,7 @@ async def api_list_pending(request: Request):
     return {
         "success": True,
         "count": len(pending),
-        "approvals": [approval_manager.to_dict(req) for req in pending]
+        "approvals": [approval_manager.to_dict(req) for req in pending],
     }
 
 
@@ -118,7 +110,7 @@ async def api_approve(request: Request):
         return {
             "success": True,
             "approval_id": approval_id,
-            "status": approval.status.value
+            "status": approval.status.value,
         }
 
     except Exception as e:
@@ -143,7 +135,7 @@ async def api_reject(request: Request):
         return {
             "success": True,
             "approval_id": approval_id,
-            "status": approval.status.value
+            "status": approval.status.value,
         }
 
     except Exception as e:

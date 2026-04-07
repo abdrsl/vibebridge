@@ -4,10 +4,10 @@ OpenCode CLI 状态监控器
 实时监控 OpenCode 进程和会话状态
 """
 
-import subprocess
 import json
-import time
 import os
+import subprocess
+import time
 from datetime import datetime
 from pathlib import Path
 

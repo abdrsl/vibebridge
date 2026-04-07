@@ -5,22 +5,20 @@ This package provides modular skills that can be loaded and applied to AI intera
 """
 
 from .constitution import (
-    ConstitutionalRule,
-    Constitution,
     DEFAULT_CONSTITUTION,
+    Constitution,
+    ConstitutionalRule,
     check_constitution,
     get_constitution_rules,
 )
-
 from .session_naming import (
-    SessionNamingRule,
-    SessionNamingConfig,
-    SessionNamer,
     DEFAULT_SESSION_NAMER,
-    generate_session_name,
+    SessionNamer,
+    SessionNamingConfig,
+    SessionNamingRule,
     analyze_session_name,
+    generate_session_name,
 )
-
 from .skill_manager import (
     Skill,
     SkillConfig,

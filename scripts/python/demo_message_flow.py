@@ -4,8 +4,8 @@ Demonstration of the complete message flow in OpenCode-Feishu Bridge.
 """
 
 import asyncio
-import sys
 import os
+import sys
 import time
 
 # Add parent directory to path
@@ -226,7 +226,7 @@ class MessageFlowDemo:
             )
             print(f"   Task ID: {msg.payload.get('task_id')}")
             print(f"   Status: {msg.payload.get('status')}")
-            print(f"   Result stored successfully")
+            print("   Result stored successfully")
 
         self.bus.subscribe(
             MessageType.TASK_RESULT, result_store_handler, agent_id="result_store"

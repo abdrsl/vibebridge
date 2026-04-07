@@ -10,7 +10,7 @@ from pathlib import Path
 # 添加当前目录到Python路径
 sys.path.insert(0, str(Path(__file__).parent))
 
-from legacy.session_manager import get_session_manager, SessionStatus
+from legacy.session_manager import SessionStatus, get_session_manager
 
 
 async def create_test_session():
@@ -30,7 +30,7 @@ async def create_test_session():
         print("❌ 创建session失败")
         return
 
-    print(f"✅ 创建session成功:")
+    print("✅ 创建session成功:")
     print(f"   Session ID: {session.session_id}")
     print(f"   聊天ID: {session.chat_id}")
     print(f"   用户ID: {session.user_id}")
@@ -63,7 +63,7 @@ async def create_test_session():
     # 获取更新后的session
     updated_session = await manager.get_session(session.session_id)
     if updated_session:
-        print(f"✅ Session状态已更新:")
+        print("✅ Session状态已更新:")
         print(f"   状态: {updated_session.status}")
         print(f"   当前任务ID: {updated_session.current_task_id}")
         print(f"   消息数量: {len(updated_session.messages)}")
@@ -97,7 +97,7 @@ async def test_session_operations(session_id: str):
     # 1. 获取session
     session = await manager.get_session(session_id)
     if session:
-        print(f"✅ 获取session成功")
+        print("✅ 获取session成功")
         print(f"   状态: {session.status}")
         print(f"   消息数量: {len(session.messages)}")
     else:
@@ -138,7 +138,7 @@ async def test_session_operations(session_id: str):
 
     # 6. 转换为字典
     session_dict = session.to_dict()
-    print(f"\nSession字典表示:")
+    print("\nSession字典表示:")
     print(f"  Session ID: {session_dict['session_id']}")
     print(f"  状态: {session_dict['status']}")
     print(f"  消息数量: {session_dict['message_count']}")

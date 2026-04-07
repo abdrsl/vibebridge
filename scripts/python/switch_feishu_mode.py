@@ -5,15 +5,26 @@ Feishu模式切换CLI工具
 """
 
 import sys
-import os
-import json
 from pathlib import Path
 
-# 添加项目根目录到路径
-project_dir = Path(__file__).parent.parent
-sys.path.insert(0, str(project_dir))
+# 计算项目根目录 (scripts/python/switch_feishu_mode.py -> 三级父目录)
+project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(project_root))
 
-from src.legacy.config_manager import get_config_manager
+try:
+    # 方法1: 尝试导入 src.legacy.config_manager
+    from src.legacy.config_manager import get_config_manager
+except ImportError:
+    try:
+        # 方法2: 尝试直接导入 legacy.config_manager (如果src已在路径中)
+        sys.path.insert(0, str(project_root / "src"))
+        from legacy.config_manager import get_config_manager
+    except ImportError as e2:
+        print(f"导入错误: {e2}")
+        print(f"项目根目录: {project_root}")
+        print(f"src目录是否存在: {(project_root / 'src').exists()}")
+        print(f"legacy目录是否存在: {(project_root / 'src' / 'legacy').exists()}")
+        sys.exit(1)
 
 
 def print_colored(text, color_code):
@@ -51,17 +62,17 @@ def show_current_status(config):
     print("=" * 50)
 
     if current_mode == "websocket":
-        print_success(f"当前模式: WebSocket长连接")
+        print_success("当前模式: WebSocket长连接")
         print("   状态: 🟢 启用")
         print("   特点: 实时接收，无需公网IP")
         print("   说明: 使用飞书Event Subscription 2.0")
     else:
-        print_success(f"当前模式: Webhook回调")
+        print_success("当前模式: Webhook回调")
         print("   状态: 🟡 启用")
         print("   特点: 传统方式，需要公网URL")
         print("   说明: 使用飞书Event Subscription 1.0")
 
-    print(f"\n📊 配置摘要:")
+    print("\n📊 配置摘要:")
     summary = config.get_config_summary()
     for key, value in summary.items():
         print(f"   {key}: {value}")
@@ -90,7 +101,7 @@ def switch_mode(config, new_mode):
     success = config.set_feishu_mode(new_mode, save=True)
 
     if success:
-        print_success(f"✅ 模式切换成功!")
+        print_success("✅ 模式切换成功!")
 
         # 显示切换后状态
         if new_mode == "websocket":

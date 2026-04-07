@@ -11,15 +11,12 @@ Usage:
     downloader.download_skill('owner/repo', 'skill_name')
 """
 
-import json
-import os
-import tempfile
 import shutil
-from pathlib import Path
-from typing import List, Dict, Any, Optional
-from dataclasses import dataclass, field
 import subprocess
-import sys
+import tempfile
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 
 @dataclass
@@ -188,7 +185,7 @@ class GitHubSkillDownloader:
                     break
 
             if not skill_source:
-                print(f"[GitHub] Skill file not found in repository")
+                print("[GitHub] Skill file not found in repository")
                 # List available files for debugging
                 py_files = list(temp_repo_dir.rglob("*.py"))
                 if py_files:
