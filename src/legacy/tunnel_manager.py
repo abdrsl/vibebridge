@@ -13,6 +13,8 @@ from typing import Optional
 
 import httpx
 
+from .feishu_client import FeishuClient
+
 # psutil is optional for process checking
 PSUTIL_AVAILABLE = False
 psutil = None
@@ -22,8 +24,6 @@ try:
     PSUTIL_AVAILABLE = True
 except ImportError:
     print("⚠️ psutil not installed, using basic process checking")
-
-from .feishu_client import FeishuClient
 
 PROJECT_ROOT = Path(__file__).parent.parent
 LOG_DIR = PROJECT_ROOT / "logs"
@@ -76,6 +76,9 @@ class TunnelManager:
             r"https://[a-zA-Z0-9-]+\.ngrok(-free)?\.dev",
             r"started tunnel.*url=(https://[^\s]+)",
             r"url=([^\s]+\.ngrok(-free)?\.dev)",
+            # localtunnel patterns
+            r"https://[a-zA-Z0-9-]+\.loca\.lt",
+            r"your url is: (https://[^\s]+)",
         ]
 
         for pattern in patterns:
@@ -236,14 +239,40 @@ class TunnelManager:
             print(f"❌ Error sending notification: {e}")
 
     async def start_tunnel(self):
-        """Start the tunnel (SSH or ngrok)."""
-        # Kill any existing tunnel processes
+        """启动隧道，支持故障转移和重试。"""
+        # 停止任何现有隧道进程
         self.stop_tunnel()
 
+        print(f"🔄 Starting tunnel with type: {self.tunnel_type}")
+
+        # 根据配置的隧道类型启动
         if self.tunnel_type == "ngrok":
-            return await self.start_ngrok_tunnel()
+            try:
+                return await self.start_ngrok_tunnel()
+            except Exception as e:
+                print(f"❌ ngrok tunnel failed: {e}")
+                print("🔄 Falling back to SSH tunnel...")
+                return await self.start_ssh_tunnel_with_fallback()
         else:
+            # SSH是默认类型，但有故障转移
+            return await self.start_ssh_tunnel_with_fallback()
+
+    async def start_ssh_tunnel_with_fallback(self):
+        """启动SSH隧道，失败时回退到localtunnel。"""
+        try:
+            print("🔧 Attempting SSH tunnel to serveo.net...")
             return await self.start_ssh_tunnel()
+        except Exception as e:
+            print(f"❌ SSH tunnel failed: {e}")
+            print("🔄 Falling back to localtunnel...")
+            try:
+                return await self.start_localtunnel_tunnel()
+            except Exception as e2:
+                print(f"❌ Localtunnel also failed: {e2}")
+                print("💥 All tunnel options failed. Service will run locally only.")
+                # 设置一个虚拟URL用于健康检查
+                self.current_url = "http://localhost:8000"
+                return None
 
     async def start_ssh_tunnel(self):
         """Start the SSH tunnel to serveo.net."""
@@ -270,6 +299,38 @@ class TunnelManager:
         asyncio.create_task(self.monitor_tunnel_output())
 
         print("✅ SSH tunnel process started")
+        return self.tunnel_process
+
+    async def start_localtunnel_tunnel(self):
+        """Start localtunnel tunnel."""
+        print("🚀 Starting localtunnel tunnel...")
+
+        # Check if npx/local command is available
+        try:
+            subprocess.run(["which", "npx"], capture_output=True, check=True)
+        except Exception as e:
+            print(f"❌ npx not available: {e}")
+            raise Exception("npx not available for localtunnel") from e
+
+        # Build command - use --print-url to get the URL directly
+        cmd = ["npx", "localtunnel", "--port", "8000", "--print-url"]
+
+        # Start process with pipes
+        self.tunnel_process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            stdin=subprocess.PIPE,
+            text=True,  # Use text mode for easier output parsing
+            universal_newlines=True,
+        )
+
+        self.running = True
+
+        # Start monitoring
+        asyncio.create_task(self.monitor_tunnel_output())
+
+        print("✅ Localtunnel process started")
         return self.tunnel_process
 
     async def start_ngrok_tunnel(self):
@@ -325,7 +386,8 @@ class TunnelManager:
             await self.handle_new_url(ngrok_url)
         else:
             print(
-                "✅ ngrok tunnel process started (URL not yet available, will monitor logs)"
+                "✅ ngrok tunnel process started (URL not yet available, "
+                "will monitor logs)"
             )
 
         return self.tunnel_process
@@ -350,17 +412,64 @@ class TunnelManager:
 
             self.tunnel_process = None
 
-    async def health_check(self) -> bool:
-        """Check if tunnel is healthy."""
+    async def health_check(self) -> tuple[bool, str]:
+        """检查隧道健康状况，返回(是否健康, 诊断信息)。"""
         if not self.current_url:
-            return False
+            return False, "No tunnel URL available"
 
+        # 测试GET请求
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(f"{self.current_url}/health")
-                return response.status_code == 200
-        except Exception:
-            return False
+                # 测试健康端点
+                get_response = await client.get(f"{self.current_url}/health")
+                if get_response.status_code != 200:
+                    return False, f"GET /health returned {get_response.status_code}"
+
+                # 测试POST请求（模拟webhook调用）
+                post_response = await client.post(
+                    f"{self.current_url}/feishu/webhook/opencode",
+                    json={
+                        "schema": "2.0",
+                        "header": {
+                            "event_id": "tunnel_health_check",
+                            "event_type": "im.message.receive_v1",
+                            "create_time": "1775655000000",
+                            "token": "health_check",
+                            "app_id": "cli_xxxxxxxxxxxxxxxx",
+                            "tenant_key": "REDACTED_TENANT_KEY",
+                        },
+                        "event": {
+                            "sender": {"sender_id": {"open_id": "test_user"}},
+                            "message": {
+                                "message_id": "om_health_check",
+                                "chat_id": "oc_health_check",
+                                "content": '{"text": "健康检查"}',
+                            },
+                        },
+                    },
+                    timeout=15.0,
+                )
+
+                # POST请求应该返回200或包含错误信息的响应
+                if post_response.status_code not in [200, 400, 403]:
+                    return (
+                        False,
+                        f"POST /feishu/webhook/opencode returned "
+                        f"{post_response.status_code}",
+                    )
+
+                return (
+                    True,
+                    f"Tunnel healthy: GET={get_response.status_code}, "
+                    f"POST={post_response.status_code}",
+                )
+
+        except httpx.TimeoutException:
+            return False, "Tunnel timeout (requests taking too long)"
+        except httpx.ConnectError:
+            return False, "Connection refused (tunnel may be down)"
+        except Exception as e:
+            return False, f"Health check error: {e}"
 
     async def get_ngrok_url(self) -> Optional[str]:
         """Get ngrok tunnel URL from ngrok API."""
@@ -467,10 +576,14 @@ class TunnelManager:
             print(f"📖 Last tunnel URL: {last_url}")
 
             # Check if last URL still works
-            if await self.health_check():
+            is_healthy, health_msg = await self.health_check()
+            if is_healthy:
                 print(f"✅ Last URL is still active: {last_url}")
+                print(f"   Health check: {health_msg}")
                 # Still notify current URL
                 await self.notify_url_change(None, last_url)
+            else:
+                print(f"⚠️ Last URL not healthy: {health_msg}")
 
         # Check if tunnel is already running
         existing_tunnel = self.check_existing_tunnel()
@@ -502,17 +615,24 @@ class TunnelManager:
 
                 # Check tunnel health
                 if self.current_url:
-                    is_healthy = await self.health_check()
+                    is_healthy, health_msg = await self.health_check()
                     if not is_healthy:
-                        print("⚠️ Tunnel URL not responding, checking tunnel process...")
+                        print(f"⚠️ Tunnel health check failed: {health_msg}")
                         # Check if tunnel process is still alive
                         if not self.check_existing_tunnel():
                             print("❌ Tunnel process dead, restarting...")
                             await self.start_tunnel()
                         else:
                             print(
-                                "🔧 Tunnel process alive but URL not responding, may be temporary"
+                                f"🔧 Tunnel process alive but health check failed: "
+                                f"{health_msg}"
                             )
+                    else:
+                        # 定期打印健康状态（每30秒一次）
+                        import time
+
+                        if int(time.time()) % 30 == 0:  # 每30秒打印一次
+                            print(f"✅ Tunnel healthy: {health_msg}")
 
                 # If we have a tunnel process, check if it died
                 if self.tunnel_process and self.tunnel_process.poll() is not None:
