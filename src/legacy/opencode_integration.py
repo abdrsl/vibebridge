@@ -294,7 +294,8 @@ class OpenCodeManager:
                 else:
                     # 如果没有收到done事件但有输出，使用输出作为结果
                     if task.output_lines and not has_error:
-                        final_result = "\n".join(task.output_lines[-20:])  # 取最后20行
+                        # 收集所有输出作为结果，不再限制行数
+                        final_result = "\n".join(task.output_lines)
                         task.final_result = final_result
                         await self.update_task(task_id, status=TaskStatus.COMPLETED)
                         yield {"type": "done", "content": final_result}

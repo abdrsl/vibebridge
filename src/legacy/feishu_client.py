@@ -23,6 +23,12 @@ class FeishuClient:
         self._tenant_access_token: str | None = None
         self._token_expires_at: float = 0
 
+    def clear_token_cache(self):
+        """清除缓存的token，强制下次请求获取新token"""
+        self._tenant_access_token = None
+        self._token_expires_at = 0
+        print("[Feishu] Token cache cleared")
+
     @retry_async(
         max_retries=3,
         base_delay=1.0,
@@ -62,9 +68,25 @@ class FeishuClient:
             # 检查Feishu API错误
             if result.get("code") != 0:
                 error_msg = result.get("msg", "Unknown error")
-                print(f"[Feishu] API error: {error_msg}")
+                error_code = result.get("code")
+                print(f"[Feishu] API error: {error_code} - {error_msg}")
+
+                # 检查是否为token失效错误
+                token_invalid_codes = [
+                    99991663,
+                    99991664,
+                    99991665,
+                ]  # 常见token失效错误码
+                if error_code in token_invalid_codes:
+                    print(
+                        f"[Feishu] Token invalid error detected ({error_code}), clearing cache"
+                    )
+                    self.clear_token_cache()
+                    # 抛出异常让重试机制重新获取token
+                    raise Exception(f"Feishu token invalid: {error_msg}")
+
                 # 某些错误不应该重试
-                if result.get("code") in [200671, 200341]:  # 权限错误
+                if error_code in [200671, 200341]:  # 权限错误
                     return result
                 raise Exception(f"Feishu API error: {error_msg}")
 
@@ -142,17 +164,9 @@ class FeishuClient:
         }
 
         try:
-            async with httpx.AsyncClient() as client:
-                resp = await client.post(
-                    url, headers=headers, json=payload, timeout=30.0
-                )
-                result = resp.json()
-                print(f"[Feishu] Text message send result: {result}")
-                if result.get("code") != 0:
-                    print(
-                        f"[Feishu] Error sending text message: code={result.get('code')}, msg={result.get('msg')}, data={result.get('data')}"
-                    )
-                return result
+            result = await self._make_request_with_retry("POST", url, headers, payload)
+            print(f"[Feishu] Text message send result: {result}")
+            return result
         except Exception as e:
             print(f"[Feishu] Error sending text message: {e}")
             return {"error": str(e)}
@@ -232,19 +246,13 @@ class FeishuClient:
         print(f"[Feishu] Card preview: {json.dumps(card)[:200]}...")
 
         try:
-            async with httpx.AsyncClient() as client:
-                resp = await client.post(
-                    url, headers=headers, json=payload, timeout=30.0
-                )
-                result = resp.json()
-                print(f"[Feishu] Card send result status: {resp.status_code}")
-                print(f"[Feishu] Card send result keys: {list(result.keys())}")
-                if "data" in result and isinstance(result["data"], dict):
-                    print(
-                        f"[Feishu] Card send data keys: {list(result['data'].keys())}"
-                    )
-                print(f"[Feishu] Card send result: {result}")
-                return result
+            result = await self._make_request_with_retry("POST", url, headers, payload)
+            print(f"[Feishu] Card send result status: 200")
+            print(f"[Feishu] Card send result keys: {list(result.keys())}")
+            if "data" in result and isinstance(result["data"], dict):
+                print(f"[Feishu] Card send data keys: {list(result['data'].keys())}")
+            print(f"[Feishu] Card send result: {result}")
+            return result
         except Exception as e:
             print(f"[Feishu] Error sending card: {e}")
             import traceback
@@ -541,10 +549,10 @@ def build_progress_card(
     )
 
     truncated_output = (
-        latest_output[:800] if len(latest_output) > 800 else latest_output
+        latest_output[:1500] if len(latest_output) > 1500 else latest_output
     )
-    if len(latest_output) > 800:
-        truncated_output += "\n\n📝 *(输出过长已截断)*"
+    if len(latest_output) > 1500:
+        truncated_output += "\n\n📝 *(输出过长已截断，完整结果请查看终端或日志)*"
 
     card = {
         "config": {"wide_screen_mode": True},
@@ -588,7 +596,7 @@ def build_result_card(
                 "tag": "markdown",
                 "content": f"## ✅ **OpenCode 任务完成**\n\n"
                 f"**任务ID:** `{task_id}`\n\n"
-                f"**任务:** {user_message[:150]}{'...' if len(user_message) > 150 else ''}",
+                f"**任务:** {user_message[:300]}{'...' if len(user_message) > 300 else ''}",
             },
         ],
         "header": {
@@ -601,7 +609,7 @@ def build_result_card(
         card["elements"].append(
             {
                 "tag": "markdown",
-                "content": f"**最终结果:**\n{final_result[:1000]}",
+                "content": f"**最终结果:**\n{final_result[:2000]}{'...\n\n📝 *(结果过长已截断，完整结果请查看终端或日志)*' if len(final_result) > 2000 else ''}",
             }
         )
 
@@ -1022,7 +1030,7 @@ def build_dynamic_progress_card(
             "tag": "markdown",
             "content": f"## {status_info['emoji']} **OpenCode 任务 {status_info['text']}**\n\n"
             f"**任务ID:** `{task_id}`\n"
-            f"**任务:** {user_message[:120]}{'...' if len(user_message) > 120 else ''}",
+            f"**任务:** {user_message[:300]}{'...' if len(user_message) > 300 else ''}",
         }
     )
 
@@ -1051,19 +1059,19 @@ def build_dynamic_progress_card(
         elements.append(
             {
                 "tag": "markdown",
-                "content": f"**💭 思考摘要:**\n{thought_summary[:200]}{'...' if len(thought_summary) > 200 else ''}",
+                "content": f"**💭 思考摘要:**\n{thought_summary[:500]}{'...' if len(thought_summary) > 500 else ''}",
             }
         )
 
     # 最近输出（如果有）
     if recent_output:
         truncated_output = (
-            recent_output[:400] if len(recent_output) > 400 else recent_output
+            recent_output[:1200] if len(recent_output) > 1200 else recent_output
         )
         elements.append(
             {
                 "tag": "markdown",
-                "content": f"**📤 最近输出:**\n```\n{truncated_output}\n```{'...(已截断)' if len(recent_output) > 400 else ''}",
+                "content": f"**📤 最近输出:**\n```\n{truncated_output}\n```{'...(已截断，完整结果请查看终端或日志)' if len(recent_output) > 1200 else ''}",
             }
         )
 

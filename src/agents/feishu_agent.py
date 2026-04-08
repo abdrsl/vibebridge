@@ -51,6 +51,9 @@ class FeishuAgent(Agent):
         self.message_bus.subscribe(
             MessageType.SEND_TEXT, self.handle_send_text, agent_id=self.agent_id
         )
+        self.message_bus.subscribe(
+            MessageType.TASK_PROGRESS, self.handle_task_progress, agent_id=self.agent_id
+        )
 
         logger.info(f"[{self.agent_id}] Initializing with App ID: {self.app_id}")
 
@@ -139,6 +142,52 @@ class FeishuAgent(Agent):
             logger.error(f"[{self.agent_id}] Could not import feishu_client")
         except Exception as e:
             logger.error(f"[{self.agent_id}] Error sending text: {e}")
+
+    async def handle_task_progress(self, message: Message):
+        """Handle task progress updates."""
+        task_id = message.payload.get("task_id")
+        progress = message.payload.get("progress")
+        content = message.payload.get("content")
+        chat_id = message.payload.get("chat_id")
+
+        logger.info(
+            f"[{self.agent_id}] Received TASK_PROGRESS message: {message.payload}"
+        )
+
+        if not chat_id or not content:
+            logger.warning(
+                f"[{self.agent_id}] Invalid task progress message: {message.payload}"
+            )
+            return
+
+        logger.info(f"[{self.agent_id}] Task progress: {task_id} - {progress}")
+
+        try:
+            from src.legacy.feishu_client import feishu_client
+
+            # Send progress as text message
+            progress_text = f"**任务进度更新**\n\n"
+            if task_id:
+                progress_text += f"**任务ID:** `{task_id}`\n"
+            if progress:
+                progress_text += f"**状态:** {progress}\n"
+            progress_text += f"**内容:** {content}"
+
+            result = await feishu_client.send_text_message(chat_id, progress_text)
+
+            await self.send_message(
+                MessageType.CUSTOM,
+                recipient=message.sender,
+                action="progress_sent",
+                result=result,
+                chat_id=chat_id,
+                task_id=task_id,
+            )
+
+        except ImportError:
+            logger.error(f"[{self.agent_id}] Could not import feishu_client")
+        except Exception as e:
+            logger.error(f"[{self.agent_id}] Error sending progress: {e}")
 
     async def get_access_token(self) -> str:
         """Get Feishu access token."""

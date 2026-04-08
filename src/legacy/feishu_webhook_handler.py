@@ -89,6 +89,15 @@ async def handle_feishu_message(
     chat_id = message.get("chat_id", "")
     sender_id = sender.get("sender_id", {}).get("open_id", "unknown")
 
+    # 清理飞书@mention标签格式（如<at user_id="user_1">@_user_1</at>）
+    import re
+
+    # 移除<at>标签及其内容
+    text = re.sub(r"<at[^>]*>.*?</at>", "", text)
+    # 移除消息开头的@用户名（如@_user_1）
+    text = re.sub(r"^\s*@[^\s]+\s*", "", text)
+    text = text.strip()
+
     if not text:
         # 在后台发送提示消息，立即返回响应
         background_tasks.add_task(
@@ -113,6 +122,56 @@ async def handle_feishu_message(
 
     if text.lower() in ["cancel", "取消", "/cancel"]:
         return await handle_session_cancel(chat_id, sender_id, background_tasks)
+
+    # 检查是否是进度查询（中文）
+    progress_keywords = [
+        "进度",
+        "进展",
+        "怎么样了",
+        "完成了吗",
+        "怎么没反馈",
+        "反馈进度",
+    ]
+    if any(keyword in text for keyword in progress_keywords):
+        # 检查是否有正在进行的session
+        session_manager = get_session_manager()
+        session = await session_manager.get_user_session(chat_id, sender_id)
+
+        if session and session.status == SessionStatus.RUNNING:
+            # 有正在运行的任务，返回当前状态
+            return await handle_session_status(chat_id, sender_id, background_tasks)
+        elif session and session.status in [
+            SessionStatus.COMPLETED,
+            SessionStatus.FAILED,
+        ]:
+            # 任务已完成或失败
+            status_text = (
+                "已完成" if session.status == SessionStatus.COMPLETED else "已失败"
+            )
+            background_tasks.add_task(
+                feishu_client.send_text_message,
+                chat_id,
+                f"📋 上一个任务{status_text}。请发送新任务或使用 /status 查看详情。",
+            )
+            return {
+                "ok": True,
+                "handled": True,
+                "action": "progress_query",
+                "status": session.status,
+            }
+        else:
+            # 没有正在进行的任务
+            background_tasks.add_task(
+                feishu_client.send_text_message,
+                chat_id,
+                "📭 当前没有正在执行的任务。请发送你的开发任务，我会立即开始处理！",
+            )
+            return {
+                "ok": True,
+                "handled": True,
+                "action": "progress_query",
+                "status": "no_task",
+            }
 
     # 检查自定义指令
     from .command_processor import get_command_processor
@@ -753,7 +812,7 @@ async def run_opencode_with_session(
             await session_manager.add_message_to_session(
                 session_id,
                 "assistant",
-                f"任务完成: {final_result[:100]}...",
+                f"任务完成: {final_result[:500]}{'...' if len(final_result) > 500 else ''}",
                 task_id=task_id,
                 result_type="completed",
             )
@@ -775,7 +834,7 @@ async def run_opencode_with_session(
                             phase="summarizing",
                             progress=100,
                             thought_summary="任务执行完成",
-                            recent_output=f"✅ 完成: {final_result[:100]}..."
+                            recent_output=f"✅ 完成: {final_result[:500]}{'...' if final_result and len(final_result) > 500 else ''}"
                             if final_result
                             else "任务完成",
                             tool_count=tool_count,
@@ -804,7 +863,7 @@ async def run_opencode_with_session(
                         # 只有文本消息，更新文本消息
                         completion_message = "## 🎉 OpenCode 任务完成\n\n"
                         completion_message += f"**任务ID:** `{task_id}`\n\n"
-                        completion_message += f"**最终结果:**\n{final_result[:200]}{'...' if len(final_result) > 200 else ''}\n\n"
+                        completion_message += f"**最终结果:**\n{final_result[:1000]}{'...' if len(final_result) > 1000 else ''}\n\n"
                         completion_message += "**执行统计:**\n"
                         completion_message += f"• 📊 总输出行数: {len(output_lines)}\n"
                         completion_message += f"• 🛠️ 工具使用次数: {tool_count}\n"
@@ -835,7 +894,7 @@ async def run_opencode_with_session(
                             phase="summarizing",
                             progress=100,
                             thought_summary="任务执行完成",
-                            recent_output=f"✅ 完成: {final_result[:100]}..."
+                            recent_output=f"✅ 完成: {final_result[:500]}{'...' if final_result and len(final_result) > 500 else ''}"
                             if final_result
                             else "任务完成",
                             tool_count=tool_count,
@@ -868,7 +927,7 @@ async def run_opencode_with_session(
             await session_manager.add_message_to_session(
                 session_id,
                 "assistant",
-                f"任务失败: {error_result[:100]}",
+                f"任务失败: {error_result[:500]}",
                 task_id=task_id,
                 result_type="failed",
             )
@@ -886,7 +945,7 @@ async def run_opencode_with_session(
                             phase="fixing",
                             progress=100,
                             thought_summary="任务执行失败",
-                            recent_output=f"❌ 错误: {error_result[:100]}...",
+                            recent_output=f"❌ 错误: {error_result[:500]}...",
                             tool_count=tool_count,
                             output_count=len(output_lines),
                             status="failed",
@@ -913,7 +972,7 @@ async def run_opencode_with_session(
                         # 只有文本消息，更新文本消息
                         error_message = "## ❌ OpenCode 任务失败\n\n"
                         error_message += f"**任务ID:** `{task_id}`\n\n"
-                        error_message += f"**错误信息:**\n{error_result[:200]}{'...' if len(error_result) > 200 else ''}\n\n"
+                        error_message += f"**错误信息:**\n{error_result[:500]}{'...' if len(error_result) > 500 else ''}\n\n"
                         error_message += "**执行统计:**\n"
                         error_message += f"• 📊 总输出行数: {len(output_lines)}\n"
                         error_message += f"• 🛠️ 工具使用次数: {tool_count}\n"
@@ -944,7 +1003,7 @@ async def run_opencode_with_session(
                             phase="fixing",
                             progress=100,
                             thought_summary="任务执行失败",
-                            recent_output=f"❌ 错误: {error_result[:100]}...",
+                            recent_output=f"❌ 错误: {error_result[:500]}...",
                             tool_count=tool_count,
                             output_count=len(output_lines),
                             status="failed",
@@ -958,7 +1017,7 @@ async def run_opencode_with_session(
                     print(f"[Session] Error sending error message: {e}")
                     # 后备：发送简单文本消息
                     try:
-                        error_message = f"## ❌ OpenCode 任务失败\n\n**任务ID:** `{task_id}`\n\n❌ 任务失败: {error_result[:100]}"
+                        error_message = f"## ❌ OpenCode 任务失败\n\n**任务ID:** `{task_id}`\n\n❌ 任务失败: {error_result[:500]}"
                         await feishu_client.send_text_message(chat_id, error_message)
                     except:
                         pass
