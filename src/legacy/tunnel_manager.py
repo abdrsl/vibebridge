@@ -39,6 +39,14 @@ class TunnelManager:
         self.running = False
         self.tunnel_type = os.getenv("TUNNEL_TYPE", "ssh").lower()  # ssh or ngrok
 
+        # URL稳定性跟踪
+        self.url_candidate: Optional[str] = None
+        self.url_candidate_time: float = 0
+        self.url_stable_threshold: float = 30.0  # 秒，URL需要稳定至少30秒才通知
+        self.last_notified_url: Optional[str] = None
+        self.consecutive_failures: int = 0
+        self.max_consecutive_failures: int = 3  # 最大连续失败次数
+
         # Ensure log directory exists
         LOG_DIR.mkdir(exist_ok=True)
 
@@ -140,21 +148,55 @@ class TunnelManager:
                 await asyncio.sleep(1)
 
     async def handle_new_url(self, new_url: str):
-        """Handle detection of a new tunnel URL."""
+        """Handle detection of a new tunnel URL with stability checking."""
+        import time
+
         old_url = self.current_url
 
         if old_url == new_url:
             print(f"🔁 Same URL, no change: {new_url}")
             return
 
-        print(f"🔄 New tunnel URL detected: {new_url}")
+        print(f"🔄 New tunnel URL candidate detected: {new_url}")
         print(f"   Old URL: {old_url}")
+        print(f"   Last notified URL: {self.last_notified_url}")
 
-        # Save the new URL
-        self.save_url(new_url)
+        # 如果新URL与上次通知的URL相同，且时间较短，忽略
+        if self.last_notified_url == new_url:
+            print("📝 URL already notified recently, ignoring")
+            return
 
-        # Send notification to Feishu
-        await self.notify_url_change(old_url, new_url)
+        # 检查URL候选
+        current_time = time.time()
+
+        if self.url_candidate != new_url:
+            # 新的候选URL
+            self.url_candidate = new_url
+            self.url_candidate_time = current_time
+            print("📝 New URL candidate registered, waiting for stability...")
+        else:
+            # 同一个候选URL，检查是否稳定足够长时间
+            elapsed = current_time - self.url_candidate_time
+            if elapsed >= self.url_stable_threshold:
+                print(f"✅ URL candidate stable for {elapsed:.1f}s, accepting")
+
+                # 更新当前URL
+                self.current_url = new_url
+                self.save_url(new_url)
+
+                # 发送通知
+                await self.notify_url_change(old_url, new_url)
+
+                # 重置候选
+                self.url_candidate = None
+                self.url_candidate_time = 0
+                self.last_notified_url = new_url
+                self.consecutive_failures = 0  # 重置失败计数器
+            else:
+                print(
+                    f"⏳ URL candidate not stable yet: "
+                    f"{elapsed:.1f}/{self.url_stable_threshold}s"
+                )
 
     async def notify_url_change(self, old_url: Optional[str], new_url: str):
         """Send notification to Feishu about URL change."""
@@ -224,6 +266,8 @@ class TunnelManager:
 
             if result and result.get("code") == 0:
                 print("✅ URL change notification sent to Feishu")
+                # 更新最后通知的URL
+                self.last_notified_url = new_url
             else:
                 # Fallback to text message
                 print("⚠️ Card failed, falling back to text message")
@@ -232,6 +276,8 @@ class TunnelManager:
                 )
                 if text_result and text_result.get("code") == 0:
                     print("✅ Text notification sent to Feishu")
+                    # 更新最后通知的URL
+                    self.last_notified_url = new_url
                 else:
                     print(f"❌ Failed to send notification: {text_result}")
 
@@ -242,6 +288,11 @@ class TunnelManager:
         """启动隧道，支持故障转移和重试。"""
         # 停止任何现有隧道进程
         self.stop_tunnel()
+
+        # 重置状态（新隧道启动）
+        self.consecutive_failures = 0
+        self.url_candidate = None
+        self.url_candidate_time = 0
 
         print(f"🔄 Starting tunnel with type: {self.tunnel_type}")
 
@@ -580,8 +631,9 @@ class TunnelManager:
             if is_healthy:
                 print(f"✅ Last URL is still active: {last_url}")
                 print(f"   Health check: {health_msg}")
-                # Still notify current URL
-                await self.notify_url_change(None, last_url)
+                # 设置last_notified_url但不发送通知
+                self.last_notified_url = last_url
+                print(f"📝 Set last_notified_url to: {last_url}")
             else:
                 print(f"⚠️ Last URL not healthy: {health_msg}")
 
@@ -594,9 +646,8 @@ class TunnelManager:
             current_url = await self.extract_url_from_log_file()
             if current_url:
                 print(f"📡 Found URL from logs: {current_url}")
-                self.save_url(current_url)
-                if last_url != current_url:
-                    await self.notify_url_change(last_url, current_url)
+                # 使用稳定性检查逻辑处理URL
+                await self.handle_new_url(current_url)
             else:
                 print("⚠️ Could not extract URL from logs")
 
@@ -617,17 +668,39 @@ class TunnelManager:
                 if self.current_url:
                     is_healthy, health_msg = await self.health_check()
                     if not is_healthy:
-                        print(f"⚠️ Tunnel health check failed: {health_msg}")
-                        # Check if tunnel process is still alive
-                        if not self.check_existing_tunnel():
-                            print("❌ Tunnel process dead, restarting...")
-                            await self.start_tunnel()
+                        self.consecutive_failures += 1
+                        print(
+                            f"⚠️ Tunnel health check failed "
+                            f"({self.consecutive_failures}/{self.max_consecutive_failures}): "
+                            f"{health_msg}"
+                        )
+
+                        # 检查是否达到最大失败次数
+                        if self.consecutive_failures >= self.max_consecutive_failures:
+                            print(
+                                f"❌ Max consecutive failures reached, checking tunnel process..."
+                            )
+                            # Check if tunnel process is still alive
+                            if not self.check_existing_tunnel():
+                                print("❌ Tunnel process dead, restarting...")
+                                await self.start_tunnel()
+                                self.consecutive_failures = 0
+                            else:
+                                print(
+                                    f"🔧 Tunnel process alive but unhealthy, will keep trying"
+                                )
                         else:
                             print(
-                                f"🔧 Tunnel process alive but health check failed: "
-                                f"{health_msg}"
+                                f"⏳ Health check failed, will retry (failure #{self.consecutive_failures})"
                             )
                     else:
+                        # 健康检查成功，重置失败计数器
+                        if self.consecutive_failures > 0:
+                            print(
+                                f"✅ Tunnel health restored after {self.consecutive_failures} failures"
+                            )
+                            self.consecutive_failures = 0
+
                         # 定期打印健康状态（每30秒一次）
                         import time
 
@@ -637,6 +710,10 @@ class TunnelManager:
                 # If we have a tunnel process, check if it died
                 if self.tunnel_process and self.tunnel_process.poll() is not None:
                     print("⚠️ Managed tunnel process died, restarting...")
+                    # 重置状态
+                    self.consecutive_failures = 0
+                    self.url_candidate = None
+                    self.url_candidate_time = 0
                     await self.start_tunnel()
 
         except KeyboardInterrupt:
