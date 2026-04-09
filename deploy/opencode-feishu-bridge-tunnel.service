@@ -7,12 +7,24 @@ Requires=opencode-feishu-bridge.service
 Type=simple
 User=akliedrak
 WorkingDirectory=/home/user/workspace/opencode-feishu-bridge
-Environment=PATH=/home/user/.nvm/versions/node/v24.14.0/bin:/usr/local/bin:/usr/bin:/bin
-ExecStart=/home/user/workspace/opencode-feishu-bridge/auto_recovery.sh daemon
+Environment=PATH=/home/user/workspace/opencode-feishu-bridge/.venv/bin:/home/user/.nvm/versions/node/v24.14.0/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/home/user/workspace/opencode-feishu-bridge/scripts/install/auto_recovery.sh daemon
 Restart=always
-RestartSec=30
+RestartSec=10
+StartLimitIntervalSec=0
+# 资源限制
+MemoryMax=300M
+MemorySwapMax=100M
+LimitNOFILE=65536
+LimitNPROC=65536
+# 日志输出
 StandardOutput=append:/home/user/workspace/opencode-feishu-bridge/logs/tunnel.log
 StandardError=append:/home/user/workspace/opencode-feishu-bridge/logs/tunnel.log
+# 安全选项
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/home/user/workspace/opencode-feishu-bridge/logs
 
 [Install]
 WantedBy=multi-user.target

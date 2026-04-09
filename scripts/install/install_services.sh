@@ -26,6 +26,14 @@ echo "📦 安装系统服务..."
 cp "$PROJECT_DIR/deploy/opencode-feishu-bridge.service" /etc/systemd/system/
 cp "$PROJECT_DIR/deploy/opencode-feishu-bridge-tunnel.service" /etc/systemd/system/
 
+# 安装logrotate配置
+if [ -f "$PROJECT_DIR/deploy/opencode-feishu-bridge.logrotate" ]; then
+    cp "$PROJECT_DIR/deploy/opencode-feishu-bridge.logrotate" /etc/logrotate.d/opencode-feishu-bridge
+    echo "📝 Logrotate配置已安装"
+else
+    echo "⚠️  未找到logrotate配置，跳过"
+fi
+
 # 重新加载systemd
 systemctl daemon-reload
 

@@ -1,0 +1,21 @@
+# Logrotate configuration for OpenCode-Feishu Bridge
+/home/user/workspace/opencode-feishu-bridge/logs/*.log {
+    daily
+    missingok
+    rotate 7
+    compress
+    delaycompress
+    notifempty
+    create 0640 akliedrak akliedrak
+    copytruncate
+    dateext
+    dateformat -%Y%m%d
+}
+
+# Exclude pid files and other non-log files
+/home/user/workspace/opencode-feishu-bridge/logs/*.pid {
+    missingok
+    rotate 0
+    weekly
+    create 0640 akliedrak akliedrak
+}

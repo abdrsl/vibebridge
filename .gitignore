@@ -67,6 +67,10 @@ COMPLETION_SUMMARY.md
 NEW_FEATURES.md
 SESSION_MANAGEMENT_SUMMARY.md
 FIXED_URL_SOLUTIONS.md
+APPROVAL_BOT_C_SETUP.md
+DEPLOYMENT_SUMMARY.md
+THREE_BOTS_SETUP.md
+PROJECT_CLEANUP_REPORT.md
 
 # Aider and development tools
 .aider*
@@ -87,6 +91,11 @@ infra/.terraform/
 simple_demo.py
 start_ngrok.sh
 .RADME.md.swp
+/*.sh
+/*.tar.gz
+standalone-approval-server.py
+openclaw-feishu-bridge-archive.tar.gz
+docs/archive/
 
 # Session and task data
 data/sessions/

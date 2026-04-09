@@ -404,6 +404,7 @@ show_help() {
     echo "命令:"
     echo "  start       启动一次监控和恢复"
     echo "  daemon      启动持续监控（后台运行）"
+    echo "  foreground  启动持续监控（前台运行）"
     echo "  stop        停止持续监控"
     echo "  status      显示当前状态"
     echo "  restart     重启服务器和隧道"
@@ -424,6 +425,9 @@ case "${1:-start}" in
     daemon)
         continuous_monitor &
         log "监控进程已后台启动 (PID: $!)"
+        ;;
+    foreground)
+        continuous_monitor
         ;;
     stop)
         stop_monitor
