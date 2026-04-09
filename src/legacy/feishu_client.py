@@ -247,7 +247,7 @@ class FeishuClient:
 
         try:
             result = await self._make_request_with_retry("POST", url, headers, payload)
-            print(f"[Feishu] Card send result status: 200")
+            print("[Feishu] Card send result status: 200")
             print(f"[Feishu] Card send result keys: {list(result.keys())}")
             if "data" in result and isinstance(result["data"], dict):
                 print(f"[Feishu] Card send data keys: {list(result['data'].keys())}")

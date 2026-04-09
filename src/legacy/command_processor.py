@@ -41,7 +41,8 @@ class CommandProcessor:
                     self.commands = config.get("commands", {})
                     self.models = config.get("models", {})
                 print(
-                    f"[Commands] Loaded {len(self.commands)} commands from {self.config_path}"
+                    f"[Commands] Loaded {len(self.commands)} commands "
+                    f"from {self.config_path}"
                 )
             else:
                 print(f"[Commands] Config file not found: {self.config_path}")
@@ -200,6 +201,11 @@ class CommandProcessor:
                 await asyncio.sleep(0.3)
 
                 # 执行Git命令，带实时输出
+                date_str = (
+                    subprocess.check_output(["date", "+%Y-%m-%d %H:%M:%S"])
+                    .decode()
+                    .strip()
+                )
                 commands = [
                     {"cmd": ["git", "add", "."], "name": "添加文件", "emoji": "📦"},
                     {"cmd": ["git", "status"], "name": "检查状态", "emoji": "🔍"},
@@ -208,7 +214,7 @@ class CommandProcessor:
                             "git",
                             "commit",
                             "-m",
-                            f"Update from Feishu bot - {subprocess.check_output(['date', '+%Y-%m-%d %H:%M:%S']).decode().strip()}",
+                            f"Update from Feishu bot - {date_str}",
                         ],
                         "name": "创建提交",
                         "emoji": "💾",
@@ -352,13 +358,16 @@ class CommandProcessor:
                             text=True,
                         ).strip()
                         commit_message += f"```\n{latest_commit}\n```"
-                    except:
+                    except Exception:
                         commit_message += "（获取提交详情失败）"
 
                     await feishu_client.send_text_message(chat_id, commit_message)
                 else:
                     error_count = sum(1 for r in results if r["returncode"] != 0)
-                    error_message = f"😢 **Git提交遇到问题** ({error_count}/{len(commands)} 失败)\n\n"
+                    error_message = (
+                        f"😢 **Git提交遇到问题** "
+                        f"({error_count}/{len(commands)} 失败)\n\n"
+                    )
 
                     for r in results:
                         status = "✅" if r["returncode"] == 0 else "❌"
@@ -553,7 +562,10 @@ class CommandProcessor:
         """打招呼"""
         from .feishu_client import feishu_client
 
-        message = "👋 你好！我是OpenCode助手，可以帮你完成开发任务。请发送你要完成的任务，比如：'帮我写一个Python函数' 或 '修复这个bug'"
+        message = (
+            "👋 你好！我是OpenCode助手，可以帮你完成开发任务。"
+            "请发送你要完成的任务，比如：'帮我写一个Python函数' 或 '修复这个bug'"
+        )
 
         # 直接发送消息，确保消息到达
         print(f"[Command] Greeting: sending message directly to {chat_id}")
@@ -628,7 +640,8 @@ class CommandProcessor:
                 )
             else:
                 print(
-                    f"[Command] switch_feishu_mode: failed to get message ID from result: {result}"
+                    f"[Command] switch_feishu_mode: failed to get message ID "
+                    f"from result: {result}"
                 )
         except Exception as e:
             print(f"[Command] switch_feishu_mode: failed to send initial message: {e}")
@@ -644,7 +657,8 @@ class CommandProcessor:
             """更新消息内容 - 通过删除旧消息并发送新消息来模拟更新"""
             nonlocal message_content, message_id
             print(
-                f"[Command] switch_feishu_mode: update_message called, new_content='{new_content}', append={append}, message_id={message_id}"
+                f"[Command] switch_feishu_mode: update_message called, "
+                f"new_content='{new_content}', append={append}, message_id={message_id}"
             )
             if append:
                 message_content += new_content + "\n"
@@ -658,11 +672,13 @@ class CommandProcessor:
                     delete_result = await feishu_client.delete_message(old_message_id)
                     if delete_result and delete_result.get("code") == 0:
                         print(
-                            "[Command] switch_feishu_mode: old message deleted successfully"
+                            "[Command] switch_feishu_mode: old message "
+                            "deleted successfully"
                         )
                     else:
                         print(
-                            f"[Command] switch_feishu_mode: failed to delete old message: {delete_result}"
+                            f"[Command] switch_feishu_mode: failed to delete "
+                            f"old message: {delete_result}"
                         )
                 except Exception as e:
                     print(
