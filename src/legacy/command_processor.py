@@ -803,7 +803,7 @@ class CommandProcessor:
                         f"❌ 错误信息: {str(e)}\n"
                         f"🤗 别担心，我还在～ 试试重新切换模式？"
                     )
-                except:
+                except Exception:
                     # 如果连错误消息都发不出去...
                     pass
 

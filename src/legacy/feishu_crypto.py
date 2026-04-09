@@ -59,7 +59,7 @@ class FeishuEncryptor:
                     print(
                         f"[Crypto] First 43 chars decoded as base64, length: {len(self.key)} bytes"
                     )
-                except:
+                except Exception:
                     # 如果失败，使用原始字符串
                     print(
                         f"[Crypto] First 43 chars also not base64, using raw string, length: {len(cleaned_key)} chars"
@@ -160,7 +160,7 @@ class FeishuEncryptor:
                         return parsed
                     except json.JSONDecodeError:
                         pass
-            except:
+            except Exception:
                 pass
             raise
 

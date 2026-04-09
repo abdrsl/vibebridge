@@ -49,7 +49,8 @@ class CoordinatorAgent(SystemAgent):
 
         # Log registration
         logger.info(
-            f"[{self.agent_id}] Registered agent {agent_name} ({agent_id}) with {len(capabilities)} capabilities"
+            f"[{self.agent_id}] Registered agent {agent_name} ({agent_id}) "
+            f"with {len(capabilities)} capabilities"
         )
 
         # Set memory and LLM agents if applicable
@@ -64,7 +65,8 @@ class CoordinatorAgent(SystemAgent):
         """Route a message to appropriate agent (simplified)."""
         # For now, just log
         logger.debug(
-            f"[{self.agent_id}] Routing message {message.message_type} from {message.sender} to {message.recipient}"
+            f"[{self.agent_id}] Routing message {message.message_type} "
+            f"from {message.sender} to {message.recipient}"
         )
 
     def get_agent_info(self, agent_id: str) -> Optional[Dict[str, Any]]:

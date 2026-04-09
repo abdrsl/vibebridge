@@ -166,7 +166,7 @@ class FeishuAgent(Agent):
             from src.legacy.feishu_client import feishu_client
 
             # Send progress as text message
-            progress_text = f"**任务进度更新**\n\n"
+            progress_text = "**任务进度更新**\n\n"
             if task_id:
                 progress_text += f"**任务ID:** `{task_id}`\n"
             if progress:

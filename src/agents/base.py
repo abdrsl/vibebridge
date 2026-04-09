@@ -114,7 +114,8 @@ class SystemAgent(Agent):
             "status": "registered",
         }
         logger.info(
-            f"[{self.agent_id}] Registered agent {agent_name} ({agent_id}) with {len(capabilities)} capabilities"
+            f"[{self.agent_id}] Registered agent {agent_name} ({agent_id}) "
+            f"with {len(capabilities)} capabilities"
         )
 
         # Send confirmation to the agent

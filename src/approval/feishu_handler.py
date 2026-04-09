@@ -102,7 +102,8 @@ class FeishuApprovalHandler:
         if not request:
             return False
 
-        card = FeishuApprovalCardBuilder.build_result_card(request)
+        # 构建结果卡片但不使用（TODO: 实现卡片更新API）
+        FeishuApprovalCardBuilder.build_result_card(request)
 
         # TODO: 实现卡片更新API
         print(f"[FeishuApproval] Update card {message_id} for {approval_id}")

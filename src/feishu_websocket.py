@@ -358,7 +358,7 @@ class FeishuWebSocketClient:
         # 每个线程需要自己的 Client 实例和事件循环
         self.running = False
         self._client_thread: Optional[threading.Thread] = None
-        self._client: Optional["Client"] = None
+        self._client: Optional[Any] = None  # Client from lark_oapi.ws
         self._client_loop: Optional[asyncio.AbstractEventLoop] = None
 
     async def start(self):

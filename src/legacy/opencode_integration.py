@@ -43,12 +43,6 @@ if not OPENCODE_SKILLS_AVAILABLE:
 if not SKILLS_AVAILABLE:
     try:
         from .simple_skill_manager import (
-            check_constitution as _check_constitution,
-        )
-        from .simple_skill_manager import (
-            generate_session_name as _generate_session_name,
-        )
-        from .simple_skill_manager import (
             get_simple_skill_manager as _get_simple_skill_manager,
         )
 

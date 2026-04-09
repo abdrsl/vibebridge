@@ -102,7 +102,8 @@ class SkillAgent(Agent):
                                 self.skills[skill_key] = attr
                     except Exception as e:
                         logger.warning(
-                            f"[{self.agent_id}] Failed to load module {module_name}: {e}"
+                            f"[{self.agent_id}] Failed to load module "
+                            f"{module_name}: {e}"
                         )
 
             logger.info(f"[{self.agent_id}] Loaded {len(self.skills)} skills")

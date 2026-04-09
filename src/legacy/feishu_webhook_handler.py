@@ -472,7 +472,7 @@ async def run_opencode_with_session(
     update_count = 0
     current_phase = "analyzing"
     completed_phases = []
-    thought_summaries = []
+    # thought_summaries = []  # Unused variable
     send_failures = 0  # 消息发送失败计数器
     max_failures = 5  # 最大失败次数，超过则禁用更新
 

@@ -64,7 +64,8 @@ class OpenCodeAgent(Agent):
                 return version
             else:
                 logger.warning(
-                    f"[{self.agent_id}] OpenCode CLI version check failed: {result.stderr}"
+                    f"[{self.agent_id}] OpenCode CLI version check failed: "
+                    f"{result.stderr}"
                 )
                 return "unknown"
         except FileNotFoundError:

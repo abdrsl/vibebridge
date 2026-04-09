@@ -1,6 +1,6 @@
 # OpenCode-Feishu Bridge Multi-Agent System
 
-[![Version](https://img.shields.io/badge/version-1.0.1-blue)](./docs/VERSION.md) [![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
+[![Version](https://img.shields.io/badge/version-1.0.2-blue)](./docs/VERSION.md) [![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 
 一个基于FastAPI的AI编程代理服务，采用模块化多智能体架构，集成飞书和OpenCode CLI。
 
@@ -331,9 +331,10 @@ pytest --cov=src --cov-report=html
 
 ## 🏷️ 版本管理
 
-### 当前版本: v1.0.1
+### 当前版本: v1.0.2
 
 **版本历史**:
+- **v1.0.2**: 模式切换功能，WebSocket自动重连，项目结构优化
 - **v1.0.1**: 加密功能增强，支持Feishu事件订阅加密/解密
 - **v1.0.0**: 基础稳定版本，包含6个自定义命令和完整的多智能体系统
 

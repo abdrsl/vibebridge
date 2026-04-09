@@ -678,7 +678,7 @@ class TunnelManager:
                         # 检查是否达到最大失败次数
                         if self.consecutive_failures >= self.max_consecutive_failures:
                             print(
-                                f"❌ Max consecutive failures reached, checking tunnel process..."
+                                "❌ Max consecutive failures reached, checking tunnel process..."
                             )
                             # Check if tunnel process is still alive
                             if not self.check_existing_tunnel():
@@ -687,7 +687,7 @@ class TunnelManager:
                                 self.consecutive_failures = 0
                             else:
                                 print(
-                                    f"🔧 Tunnel process alive but unhealthy, will keep trying"
+                                    "🔧 Tunnel process alive but unhealthy, will keep trying"
                                 )
                         else:
                             print(
