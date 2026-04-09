@@ -93,7 +93,7 @@ start_ngrok.sh
 .RADME.md.swp
 /*.sh
 /*.tar.gz
-standalone-approval-server.py
+
 openclaw-feishu-bridge-archive.tar.gz
 docs/archive/
 
