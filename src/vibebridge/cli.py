@@ -90,6 +90,18 @@ def init(
         yaml.dump(config_dict, f, allow_unicode=True, sort_keys=False)
 
 
+    mode = cfg.feishu.mode
+    console.print(f"\n✅ 配置已保存到 [cyan]{cfg.config_file}[/cyan]")
+    console.print("\n📋 下一步:")
+    console.print("   1. 在飞书开发者后台配置事件订阅: https://open.feishu.cn/app")
+    console.print("   2. 订阅事件: im.message.receive_v1")
+    if mode == "webhook":
+        console.print("   3. 请求 URL: http://your-machine-ip:8000/im/feishu/webhook")
+    else:
+        console.print("   3. WebSocket 模式无需配置公网 URL")
+    console.print("\n🚀 运行 [bold]vibebridge start[/bold] 启动服务")
+
+
 def _convert_paths_to_strings(obj):
     """Recursively convert Path objects to strings in a dict/list."""
     from pathlib import Path
@@ -105,17 +117,6 @@ def _convert_paths_to_strings(obj):
                 obj[i] = str(item)
             elif isinstance(item, (dict, list)):
                 _convert_paths_to_strings(item)
-
-    mode = cfg.feishu.mode
-    console.print(f"\n✅ 配置已保存到 [cyan]{cfg.config_file}[/cyan]")
-    console.print("\n📋 下一步:")
-    console.print("   1. 在飞书开发者后台配置事件订阅: https://open.feishu.cn/app")
-    console.print("   2. 订阅事件: im.message.receive_v1")
-    if mode == "webhook":
-        console.print("   3. 请求 URL: http://your-machine-ip:8000/im/feishu/webhook")
-    else:
-        console.print("   3. WebSocket 模式无需配置公网 URL")
-    console.print("\n🚀 运行 [bold]vibebridge start[/bold] 启动服务")
 
 
 @app.command()

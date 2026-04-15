@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -96,17 +97,94 @@ class Config(BaseSettings):
         self.log_dir.mkdir(parents=True, exist_ok=True)
 
 
+def _expand_env_vars(obj: Any) -> Any:
+    """Recursively replace ${VAR} placeholders with environment variable values."""
+    if isinstance(obj, str):
+        def _repl(match: re.Match) -> str:
+            return os.environ.get(match.group(1), match.group(0))
+        return re.sub(r"\$\{([^}]+)\}", _repl, obj)
+    if isinstance(obj, dict):
+        return {k: _expand_env_vars(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_expand_env_vars(i) for i in obj]
+    return obj
+
+
+def _remove_unresolved_placeholders(obj: Any) -> Any:
+    """Remove ${VAR} strings that were not expanded so defaults/env vars win."""
+    if isinstance(obj, str):
+        if re.fullmatch(r"\$\{[^}]+\}", obj):
+            return None
+        return obj
+    if isinstance(obj, dict):
+        return {k: v for k, v in ((k, _remove_unresolved_placeholders(v)) for k, v in obj.items()) if v is not None}
+    if isinstance(obj, list):
+        return [i for i in (_remove_unresolved_placeholders(i) for i in obj) if i is not None]
+    return obj
+
+
+def _deep_merge(base: dict, overlay: dict) -> dict:
+    """Merge overlay into base recursively."""
+    result = base.copy()
+    for k, v in overlay.items():
+        if isinstance(v, dict) and k in result and isinstance(result[k], dict):
+            result[k] = _deep_merge(result[k], v)
+        else:
+            result[k] = v
+    return result
+
+
+def _apply_flat_env_overrides(data: dict) -> dict:
+    """Map commonly-used flat env vars (e.g. FEISHU_APP_ID) into nested dict."""
+    mappings = {
+        "FEISHU_APP_ID": ("feishu", "app_id"),
+        "FEISHU_APP_SECRET": ("feishu", "app_secret"),
+        "FEISHU_ENCRYPT_KEY": ("feishu", "encrypt_key"),
+        "FEISHU_VERIFICATION_TOKEN": ("feishu", "verification_token"),
+        "FEISHU_MODE": ("feishu", "mode"),
+        "VB_DEFAULT_PROVIDER": ("agents", "default_provider"),
+    }
+    for env_key, path in mappings.items():
+        val = os.getenv(env_key)
+        if val is not None:
+            node = data
+            for key in path[:-1]:
+                node = node.setdefault(key, {})
+            node[path[-1]] = val
+    return data
+
+
 def load_config() -> Config:
-    """Load configuration from defaults, then YAML, then environment variables."""
+    """Load configuration from defaults, then YAML, then environment variables.
+
+    Priority (highest -> lowest):
+    1. Environment variables (flat names like FEISHU_APP_ID or nested like FEISHU__APP_ID)
+    2. YAML config file with ${VAR} placeholders expanded
+    3. Built-in defaults
+    """
+    # Step 1: pydantic-settings loads .env and environment variables automatically
     cfg = Config()
 
-    # Load from YAML if exists
+    # Step 2: if YAML exists, merge it in without clobbering env vars
     if cfg.config_file.exists():
         import yaml
 
         with cfg.config_file.open("r", encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
-        cfg = Config(**data)
+            raw_data = yaml.safe_load(f) or {}
+
+        # Expand ${VAR} syntax inside YAML values
+        raw_data = _expand_env_vars(raw_data)
+        # Also inject commonly-used flat env vars so README examples work out of the box
+        raw_data = _apply_flat_env_overrides(raw_data)
+        # Drop placeholders that weren't expanded so env/defaults take over
+        raw_data = _remove_unresolved_placeholders(raw_data)
+
+        # Merge YAML on top of current config (which already contains env vars).
+        # This means a real value in YAML wins, but an empty/missing YAML value
+        # leaves the env var intact.
+        current = cfg.model_dump()
+        merged = _deep_merge(current, raw_data or {})
+        cfg = Config(**merged)
 
     cfg.ensure_dirs()
     return cfg

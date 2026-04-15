@@ -6,7 +6,6 @@ import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
 
 from .config import get_config
 from .im.feishu import FeishuAdapter
