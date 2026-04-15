@@ -876,8 +876,117 @@ async def run_opencode_with_session(
                 result_type="completed",
             )
 
-            if notify:
-                # 发送最终完成消息 - 优先更新现有卡片
+            # WebSocket模式下发送优化的最终汇总总结
+            if is_websocket_mode:
+                print(
+                    f"[Session] WebSocket mode: sending optimized final summary for session {session_id}"
+                )
+                try:
+                    # 尝试发送卡片（更美观，支持表格）
+                    # 构建完成卡片
+                    completed_phases.append("summarizing")
+
+                    # 准备结果内容 - 如果是表格，直接显示；否则放在代码块中
+                    result_display = ""
+                    if final_result:
+                        # 检查是否包含表格（包含管道符和横线）
+                        if "|" in final_result and "-" in final_result:
+                            # 可能是markdown表格，直接作为markdown内容
+                            if len(final_result) > 4000:
+                                result_display = f"{final_result[:3500]}...\n\n*表格过长已截断，完整结果共 {len(final_result)} 字符*"
+                            else:
+                                result_display = final_result
+                        else:
+                            # 普通文本，放在代码块中
+                            if len(final_result) > 1200:
+                                result_display = f"```\n{final_result[:1000]}...\n```\n*完整结果共 {len(final_result)} 字符*"
+                            else:
+                                result_display = f"```\n{final_result}\n```"
+                    else:
+                        result_display = "无输出"
+
+                    # 构建统计信息
+                    stats_content = f"**📊 执行统计:**\n"
+                    stats_content += f"• 工具使用: {tool_count} 次\n"
+                    stats_content += f"• 输出事件: {len(output_lines)} 个\n"
+                    stats_content += "• 状态: ✅ 成功"
+
+                    print(
+                        f"[Session] WebSocket completion - building card, final_result length: {len(final_result) if final_result else 0}, has_table: {'|' in final_result and '-' in final_result if final_result else False}"
+                    )
+
+                    completion_card = {
+                        "config": {"wide_screen_mode": True},
+                        "elements": [
+                            {
+                                "tag": "markdown",
+                                "content": f"## ✅ **任务完成**\n\n"
+                                f"**任务:** {user_message[:300]}{'...' if len(user_message) > 300 else ''}\n"
+                                f"**ID:** `{task_id}`",
+                            },
+                            {"tag": "hr"},
+                            {"tag": "markdown", "content": f"**📋 完整结果:**\n\n{result_display}"},
+                            {"tag": "hr"},
+                            {"tag": "markdown", "content": stats_content},
+                            {
+                                "tag": "note",
+                                "elements": [
+                                    {"tag": "plain_text", "content": "任务执行完毕，可发送新任务"}
+                                ],
+                            },
+                        ],
+                        "header": {
+                            "title": {"tag": "plain_text", "content": "✅ 任务完成"},
+                            "template": "green",
+                        },
+                    }
+
+                    print(
+                        f"[Session] Attempting to send completion card, card size: {len(str(completion_card))}"
+                    )
+                    result = await feishu_client.send_interactive_card(chat_id, completion_card)
+                    print(f"[Session] Card send result: {result}")
+                    if result and result.get("code") == 0:
+                        print(f"[Session] WebSocket completion card sent successfully")
+                    else:
+                        # 卡片发送失败，回退到文本消息
+                        raise Exception(f"Card send failed: {result}")
+
+                except Exception as e:
+                    print(f"[Session] Error sending WebSocket completion card: {e}")
+                    # 回退到文本消息
+                    try:
+                        # 优化后的最终总结格式 - 更简洁
+                        completion_message = "## ✅ 任务完成\n\n"
+                        completion_message += f"**任务:** {user_message[:150]}{'...' if len(user_message) > 150 else ''}\n"
+                        completion_message += f"**ID:** `{task_id}`\n\n"
+
+                        # 结果摘要（更完整）
+                        if final_result:
+                            if len(final_result) > 2000:
+                                # 对于超长结果，提供更长的摘要
+                                completion_message += "**📋 结果摘要:**\n"
+                                completion_message += f"```\n{final_result[:1500]}...\n```\n"
+                                completion_message += f"*完整结果共 {len(final_result)} 字符*\n\n"
+                            else:
+                                completion_message += "**📋 完整结果:**\n"
+                                completion_message += f"```\n{final_result}\n```\n\n"
+                        else:
+                            completion_message += "**📋 结果:** 无输出\n\n"
+
+                        completion_message += "**📊 执行统计:**\n"
+                        completion_message += f"• 工具使用: {tool_count} 次\n"
+                        completion_message += f"• 输出事件: {len(output_lines)} 个\n"
+                        completion_message += "• 状态: ✅ 成功\n\n"
+                        completion_message += "---\n*任务执行完毕*"
+
+                        await feishu_client.send_text_message(chat_id, completion_message)
+                    except Exception as e2:
+                        print(
+                            f"[Session] Error sending WebSocket completion message (fallback): {e2}"
+                        )
+            elif notify:
+                # Webhook模式：更新现有卡片为完成状态
                 print(f"[Session] Sending final completion message for session {session_id}")
 
                 try:
@@ -967,24 +1076,6 @@ async def run_opencode_with_session(
                         await feishu_client.send_text_message(chat_id, completion_message)
                     except:
                         pass
-            elif is_websocket_mode:
-                # WebSocket模式：发送最终汇总总结
-                print(f"[Session] WebSocket mode: sending final summary for session {session_id}")
-                try:
-                    # 构建更完整的最终总结
-                    completion_message = "## 🎉 OpenCode 任务完成\n\n"
-                    completion_message += f"**任务ID:** `{task_id}`\n\n"
-                    completion_message += "**最终汇总:**\n"
-                    completion_message += f"```\n{final_result[:2000]}{'...' if len(final_result) > 2000 else ''}\n```\n\n"
-                    completion_message += "**执行统计:**\n"
-                    completion_message += f"• 📊 总输出行数: {len(output_lines)}\n"
-                    completion_message += f"• 🛠️ 工具使用次数: {tool_count}\n"
-                    completion_message += "• ✅ 状态: 成功完成\n\n"
-                    completion_message += "🎯 任务已成功执行完毕！"
-
-                    await feishu_client.send_text_message(chat_id, completion_message)
-                except Exception as e:
-                    print(f"[Session] Error sending WebSocket completion message: {e}")
 
         elif error_result:
             await session_manager.update_session(
@@ -1079,22 +1170,70 @@ async def run_opencode_with_session(
                     except:
                         pass
             elif is_websocket_mode:
-                # WebSocket模式：发送错误汇总总结
+                # WebSocket模式：发送错误汇总总结（使用卡片）
                 print(f"[Session] WebSocket mode: sending error summary for session {session_id}")
                 try:
-                    error_message = "## ❌ OpenCode 任务失败\n\n"
-                    error_message += f"**任务ID:** `{task_id}`\n\n"
-                    error_message += "**错误信息:**\n"
-                    error_message += f"```\n{error_result[:2000]}{'...' if len(error_result) > 2000 else ''}\n```\n\n"
-                    error_message += "**执行统计:**\n"
-                    error_message += f"• 📊 总输出行数: {len(output_lines)}\n"
-                    error_message += f"• 🛠️ 工具使用次数: {tool_count}\n"
-                    error_message += "• ❌ 状态: 执行失败\n\n"
-                    error_message += "🔧 请检查任务描述或重试。"
+                    # 构建错误卡片
+                    error_card = {
+                        "config": {"wide_screen_mode": True},
+                        "elements": [
+                            {
+                                "tag": "markdown",
+                                "content": f"## ❌ **任务失败**\n\n"
+                                f"**任务:** {user_message[:300]}{'...' if len(user_message) > 300 else ''}\n"
+                                f"**ID:** `{task_id}`",
+                            },
+                            {"tag": "hr"},
+                            {
+                                "tag": "markdown",
+                                "content": f"**错误信息:**\n\n```\n{error_result[:800]}{'...' if len(error_result) > 800 else ''}\n```",
+                            },
+                            {"tag": "hr"},
+                            {
+                                "tag": "markdown",
+                                "content": f"**📊 执行统计:**\n\n"
+                                f"• 工具使用: {tool_count} 次\n"
+                                f"• 输出事件: {len(output_lines)} 个\n"
+                                f"• 状态: ❌ 失败",
+                            },
+                            {
+                                "tag": "note",
+                                "elements": [
+                                    {"tag": "plain_text", "content": "🔧 请检查任务描述或重试"}
+                                ],
+                            },
+                        ],
+                        "header": {
+                            "title": {"tag": "plain_text", "content": "❌ 任务失败"},
+                            "template": "red",
+                        },
+                    }
 
-                    await feishu_client.send_text_message(chat_id, error_message)
+                    result = await feishu_client.send_interactive_card(chat_id, error_card)
+                    if result and result.get("code") == 0:
+                        print(f"[Session] WebSocket error card sent successfully")
+                    else:
+                        # 卡片发送失败，回退到文本消息
+                        raise Exception(f"Card send failed: {result}")
+
                 except Exception as e:
-                    print(f"[Session] Error sending WebSocket error message: {e}")
+                    print(f"[Session] Error sending WebSocket error card: {e}")
+                    # 回退到文本消息
+                    try:
+                        error_message = "## ❌ 任务失败\n\n"
+                        error_message += f"**任务:** {user_message[:150]}{'...' if len(user_message) > 150 else ''}\n"
+                        error_message += f"**ID:** `{task_id}`\n\n"
+                        error_message += "**错误信息:**\n"
+                        error_message += f"```\n{error_result[:500]}{'...' if len(error_result) > 500 else ''}\n```\n\n"
+                        error_message += "**执行统计:**\n"
+                        error_message += f"• 工具使用: {tool_count} 次\n"
+                        error_message += f"• 输出事件: {len(output_lines)} 个\n"
+                        error_message += "• 状态: ❌ 失败\n\n"
+                        error_message += "🔧 请检查任务描述或重试。"
+
+                        await feishu_client.send_text_message(chat_id, error_message)
+                    except Exception as e2:
+                        print(f"[Session] Error sending WebSocket error message (fallback): {e2}")
 
     except Exception as e:
         print(f"[Session] Error: {e}")

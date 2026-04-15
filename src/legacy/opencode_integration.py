@@ -56,6 +56,26 @@ if not SKILLS_AVAILABLE:
 PROJECT_ROOT = Path(__file__).parent.parent
 
 
+def filter_final_output(output_lines: list[str]) -> str:
+    """过滤输出行，移除工具调用行，返回最终结果"""
+    filtered_lines = []
+    for line in output_lines:
+        # 移除工具调用行（以🛠️开头的行）
+        if line.strip().startswith("🛠️"):
+            continue
+        # 移除其他中间过程行（如"🛠️ 查看项目根目录结构:"等）
+        if "🛠️" in line and (":" in line or "：" in line):
+            continue
+        # 保留其他行
+        filtered_lines.append(line)
+
+    # 如果过滤后没有内容，返回原始输出的摘要
+    if not filtered_lines:
+        return "\n".join(output_lines[-10:])  # 返回最后10行作为后备
+
+    return "\n".join(filtered_lines)
+
+
 class TaskStatus(str, Enum):
     PENDING = "pending"
     RUNNING = "running"
@@ -93,9 +113,7 @@ class OpenCodeManager:
         check_constitution: bool = True,
         generate_session_name: bool = True,
     ) -> str:
-        task_id = (
-            f"oc_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
-        )
+        task_id = f"oc_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
 
         session_id = None
 
@@ -121,18 +139,12 @@ class OpenCodeManager:
 
                     # Check constitution if requested
                     if check_constitution:
-                        constitution_result = skill_manager.check_constitution(
-                            user_message
-                        )
+                        constitution_result = skill_manager.check_constitution(user_message)
                         if constitution_result.get("has_violations", False):
                             # Log violation but don't block (for now)
-                            print(
-                                f"[Security] Constitutional violation detected in task {task_id}"
-                            )
+                            print(f"[Security] Constitutional violation detected in task {task_id}")
                             for violation in constitution_result.get("violations", []):
-                                print(
-                                    f"  - {violation.get('message', 'Unknown violation')}"
-                                )
+                                print(f"  - {violation.get('message', 'Unknown violation')}")
 
                     # Generate session name if requested
                     if generate_session_name:
@@ -266,9 +278,7 @@ class OpenCodeManager:
                             elif event_type == "done":
                                 final_content = event.get("content", {})
                                 if isinstance(final_content, dict):
-                                    final_text = final_content.get(
-                                        "text", str(final_content)
-                                    )
+                                    final_text = final_content.get("text", str(final_content))
                                 else:
                                     final_text = str(final_content)
                                 final_result = final_text
@@ -290,16 +300,13 @@ class OpenCodeManager:
                 else:
                     # 如果没有收到done事件但有输出，使用输出作为结果
                     if task.output_lines and not has_error:
-                        # 收集所有输出作为结果，不再限制行数
-                        final_result = "\n".join(task.output_lines)
+                        # 收集所有输出作为结果，过滤掉工具调用行
+                        final_result = filter_final_output(task.output_lines)
                         task.final_result = final_result
                         await self.update_task(task_id, status=TaskStatus.COMPLETED)
                         yield {"type": "done", "content": final_result}
                     else:
-                        error_msg = (
-                            task.error
-                            or f"OpenCode exited with code {process.returncode}"
-                        )
+                        error_msg = task.error or f"OpenCode exited with code {process.returncode}"
                         await self.update_task(
                             task_id,
                             status=TaskStatus.FAILED,
@@ -307,9 +314,7 @@ class OpenCodeManager:
                         )
                         yield {"type": "error", "content": error_msg}
             else:
-                error_msg = (
-                    task.error or f"OpenCode exited with code {process.returncode}"
-                )
+                error_msg = task.error or f"OpenCode exited with code {process.returncode}"
                 await self.update_task(
                     task_id,
                     status=TaskStatus.FAILED,
@@ -328,9 +333,7 @@ class OpenCodeManager:
             yield {"type": "error", "content": error_msg}
 
     async def list_tasks(self, limit: int = 20) -> list[dict]:
-        tasks = sorted(self.tasks.values(), key=lambda t: t.created_at, reverse=True)[
-            :limit
-        ]
+        tasks = sorted(self.tasks.values(), key=lambda t: t.created_at, reverse=True)[:limit]
         return [
             {
                 "task_id": t.task_id,
