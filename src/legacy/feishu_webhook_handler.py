@@ -5,6 +5,7 @@
 import asyncio
 import json
 import os
+import re
 from datetime import datetime
 from typing import Any, Dict
 
@@ -474,19 +475,44 @@ async def start_opencode_task(
     background_tasks: BackgroundTasks,
 ) -> Dict[str, Any]:
     """开始OpenCode任务"""
-    # 创建OpenCode任务 - 飞书访问时默认permit all
-    # 检查环境变量 FEISHU_PERMIT_ALL，默认为 True
+    # 创建OpenCode任务 - 支持口令授权最高权限
+    # 检查环境变量 FEISHU_PERMIT_ALL，默认为 True（向后兼容）
     feishu_permit_all = os.getenv("FEISHU_PERMIT_ALL", "true").lower() in ("true", "1", "yes", "y")
-    check_constitution = not feishu_permit_all
+    # 获取授权口令
+    permit_password = os.getenv("FEISHU_PERMIT_PASSWORD", "").strip()
+
+    # 初始化变量
+    original_message = user_message
+    cleaned_message = user_message
+    skip_constitution = feishu_permit_all  # 如果 FEISHU_PERMIT_ALL=true，跳过检查
+
+    # 检查是否包含授权口令
+    if permit_password and permit_password in user_message:
+        skip_constitution = True
+        # 从消息中移除口令（避免OpenCode看到）
+        cleaned_message = user_message.replace(permit_password, "")
+        # 去除首尾空格，合并多个连续空格
+        cleaned_message = re.sub(r"\s+", " ", cleaned_message.strip())
+        # 如果消息为空，使用默认消息
+        if not cleaned_message:
+            cleaned_message = "执行授权任务"
+        print(f"[Security] Permit password detected, skipping constitution check")
+        # 记录时隐藏口令
+        print(
+            f"[Security] Original message length: {len(user_message)}, cleaned length: {len(cleaned_message)}"
+        )
+    elif feishu_permit_all:
+        print(f"[Security] Feishu permit all enabled, skipping constitution check")
+    else:
+        print(f"[Security] No permit password or FEISHU_PERMIT_ALL, constitution check enabled")
+
+    check_constitution = not skip_constitution
 
     task_id = await opencode_manager.create_task(
-        user_message=user_message,
+        user_message=cleaned_message,
         feishu_chat_id=chat_id,
-        check_constitution=check_constitution,  # 根据环境变量控制宪法检查
+        check_constitution=check_constitution,  # 根据环境变量和口令控制宪法检查
     )
-
-    if feishu_permit_all:
-        print(f"[Security] Feishu permit all enabled, constitution check: {check_constitution}")
 
     # 更新session状态和任务ID
     session_manager = get_session_manager()
