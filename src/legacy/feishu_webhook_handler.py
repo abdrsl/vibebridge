@@ -968,10 +968,20 @@ async def run_opencode_with_session(
                     except:
                         pass
             elif is_websocket_mode:
-                # WebSocket模式：发送简单的完成消息（无进度更新）
-                print(f"[Session] WebSocket mode: sending final result for session {session_id}")
+                # WebSocket模式：发送最终汇总总结
+                print(f"[Session] WebSocket mode: sending final summary for session {session_id}")
                 try:
-                    completion_message = f"✅ OpenCode 任务完成\n\n任务ID: `{task_id}`\n\n结果: {final_result[:500]}{'...' if len(final_result) > 500 else ''}"
+                    # 构建更完整的最终总结
+                    completion_message = "## 🎉 OpenCode 任务完成\n\n"
+                    completion_message += f"**任务ID:** `{task_id}`\n\n"
+                    completion_message += "**最终汇总:**\n"
+                    completion_message += f"```\n{final_result[:2000]}{'...' if len(final_result) > 2000 else ''}\n```\n\n"
+                    completion_message += "**执行统计:**\n"
+                    completion_message += f"• 📊 总输出行数: {len(output_lines)}\n"
+                    completion_message += f"• 🛠️ 工具使用次数: {tool_count}\n"
+                    completion_message += "• ✅ 状态: 成功完成\n\n"
+                    completion_message += "🎯 任务已成功执行完毕！"
+
                     await feishu_client.send_text_message(chat_id, completion_message)
                 except Exception as e:
                     print(f"[Session] Error sending WebSocket completion message: {e}")
@@ -1069,10 +1079,19 @@ async def run_opencode_with_session(
                     except:
                         pass
             elif is_websocket_mode:
-                # WebSocket模式：发送简单的错误消息（无进度更新）
-                print(f"[Session] WebSocket mode: sending error result for session {session_id}")
+                # WebSocket模式：发送错误汇总总结
+                print(f"[Session] WebSocket mode: sending error summary for session {session_id}")
                 try:
-                    error_message = f"❌ OpenCode 任务失败\n\n任务ID: `{task_id}`\n\n错误: {error_result[:500]}{'...' if len(error_result) > 500 else ''}"
+                    error_message = "## ❌ OpenCode 任务失败\n\n"
+                    error_message += f"**任务ID:** `{task_id}`\n\n"
+                    error_message += "**错误信息:**\n"
+                    error_message += f"```\n{error_result[:2000]}{'...' if len(error_result) > 2000 else ''}\n```\n\n"
+                    error_message += "**执行统计:**\n"
+                    error_message += f"• 📊 总输出行数: {len(output_lines)}\n"
+                    error_message += f"• 🛠️ 工具使用次数: {tool_count}\n"
+                    error_message += "• ❌ 状态: 执行失败\n\n"
+                    error_message += "🔧 请检查任务描述或重试。"
+
                     await feishu_client.send_text_message(chat_id, error_message)
                 except Exception as e:
                     print(f"[Session] Error sending WebSocket error message: {e}")
@@ -1117,10 +1136,21 @@ async def run_opencode_with_session(
             except Exception as send_error:
                 print(f"[Session] Failed to send exception message: {send_error}")
         elif is_websocket_mode:
-            # WebSocket模式：发送简单的异常消息
-            print(f"[Session] WebSocket mode: sending exception message for session {session_id}")
+            # WebSocket模式：发送异常汇总总结
+            print(f"[Session] WebSocket mode: sending exception summary for session {session_id}")
             try:
-                error_message = f"⚠️ OpenCode 任务异常\n\n任务ID: `{task_id}`\n\n异常: {str(e)[:200]}{'...' if len(str(e)) > 200 else ''}"
+                error_message = "## ⚠️ OpenCode 任务异常\n\n"
+                error_message += f"**任务ID:** `{task_id}`\n\n"
+                error_message += "**异常信息:**\n"
+                error_message += (
+                    f"```\n{str(e)[:1000]}{'...' if len(str(e)) > 1000 else ''}\n```\n\n"
+                )
+                error_message += "**执行统计:**\n"
+                error_message += f"• 📊 总输出行数: {len(output_lines)}\n"
+                error_message += f"• 🛠️ 工具使用次数: {tool_count}\n"
+                error_message += "• ⚠️ 状态: 执行异常\n\n"
+                error_message += "🔧 系统内部错误，请稍后重试或联系开发者。"
+
                 await feishu_client.send_text_message(chat_id, error_message)
             except Exception as send_error:
                 print(f"[Session] Failed to send WebSocket exception message: {send_error}")

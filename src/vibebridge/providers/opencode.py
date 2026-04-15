@@ -88,6 +88,9 @@ class OpenCodeProvider(BaseProvider):
         except Exception as e:
             return False, str(e)
 
+    def default_workdir(self) -> str:
+        return self._default_workdir
+
     async def create_task(
         self,
         prompt: str,
@@ -95,13 +98,17 @@ class OpenCodeProvider(BaseProvider):
         session_id: str,
         chat_id: str | None = None,
     ) -> str:
+        # Ensure workdir exists
+        wd = Path(workdir).expanduser()
+        wd.mkdir(parents=True, exist_ok=True)
+
         task_id = (
             f"oc_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{session_id[-8:]}"
         )
         task = OpenCodeTask(
             task_id=task_id,
             user_message=prompt,
-            workdir=workdir or self._default_workdir,
+            workdir=str(wd),
         )
         async with self._lock:
             self._tasks[task_id] = task
@@ -124,6 +131,7 @@ class OpenCodeProvider(BaseProvider):
             task_id=task_id,
         )
 
+        process: asyncio.subprocess.Process | None = None
         try:
             cmd = [
                 self.binary,
@@ -150,11 +158,19 @@ class OpenCodeProvider(BaseProvider):
             stdout = process.stdout
             final_result: str | None = None
             has_error = False
+            total_deadline = asyncio.get_event_loop().time() + 1200  # 20 min total
 
             while True:
+                # Global deadline guard
+                remaining = total_deadline - asyncio.get_event_loop().time()
+                if remaining <= 0:
+                    raise asyncio.TimeoutError("Total execution time exceeded 1200s")
+
                 try:
                     assert stdout is not None
-                    chunk = await asyncio.wait_for(stdout.read(1024), timeout=60.0)
+                    chunk = await asyncio.wait_for(
+                        stdout.read(1024), timeout=min(60.0, remaining)
+                    )
                     if not chunk:
                         break
                     buffer += chunk.decode("utf-8", errors="replace")
@@ -228,8 +244,20 @@ class OpenCodeProvider(BaseProvider):
                 except asyncio.TimeoutError:
                     if process.returncode is not None:
                         break
+                    # If process is still running but silent for 60s, yield a heartbeat
+                    yield StreamEvent(
+                        type=StreamEventType.STATUS,
+                        content="⏳ OpenCode 仍在运行，等待输出中...",
+                        task_id=task_id,
+                    )
 
-            await process.wait()
+            try:
+                await asyncio.wait_for(process.wait(), timeout=30.0)
+            except asyncio.TimeoutError:
+                process.kill()
+                await process.wait()
+                has_error = True
+                task.error = "OpenCode process did not exit in time after output ended"
 
             if process.returncode == 0:
                 if final_result and not has_error:
@@ -287,9 +315,29 @@ class OpenCodeProvider(BaseProvider):
                 content=error_msg,
                 task_id=task_id,
             )
+        except asyncio.TimeoutError as e:
+            error_msg = f"任务执行超时: {e}"
+            await self._update_task(task_id, status=TaskStatus.FAILED, error=error_msg)
+            if process and process.returncode is None:
+                try:
+                    process.kill()
+                    await asyncio.wait_for(process.wait(), timeout=5.0)
+                except Exception:
+                    pass
+            yield StreamEvent(
+                type=StreamEventType.ERROR,
+                content=error_msg,
+                task_id=task_id,
+            )
         except Exception as e:
             error_msg = f"执行出错: {str(e)}"
             await self._update_task(task_id, status=TaskStatus.FAILED, error=error_msg)
+            if process and process.returncode is None:
+                try:
+                    process.kill()
+                    await asyncio.wait_for(process.wait(), timeout=5.0)
+                except Exception:
+                    pass
             yield StreamEvent(
                 type=StreamEventType.ERROR,
                 content=error_msg,
@@ -311,9 +359,6 @@ class OpenCodeProvider(BaseProvider):
             task.status = TaskStatus.CANCELLED
             task.updated_at = datetime.now()
             return True
-
-    def default_workdir(self) -> str:
-        return self._default_workdir
 
     async def _get_task(self, task_id: str) -> OpenCodeTask | None:
         async with self._lock:

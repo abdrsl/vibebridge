@@ -99,13 +99,25 @@ class FeishuAdapter(BaseIMAdapter):
         )
 
     async def send_text(self, chat_id: str, text: str) -> bool:
-        result = await self._client.send_text_message(chat_id, text)
-        return result is not None and "error" not in result
+        try:
+            result = await self._client.send_text_message(chat_id, text)
+            return result is not None and "error" not in result
+        except Exception as e:
+            print(f"[FeishuAdapter] send_text failed: {e}")
+            return False
 
     async def send_card(self, chat_id: str, card_type: str, context: dict) -> bool:
-        result = await self._client.send_interactive_card(chat_id, context)
-        return result is not None and "error" not in result
+        try:
+            result = await self._client.send_interactive_card(chat_id, context)
+            return result is not None and "error" not in result
+        except Exception as e:
+            print(f"[FeishuAdapter] send_card failed: {e}")
+            return False
 
     async def upload_file(self, chat_id: str, file_path: str) -> bool:
-        result = await self._client.upload_file(chat_id, file_path)
-        return result is not None and "error" not in result
+        try:
+            result = await self._client.upload_file(chat_id, file_path)
+            return result is not None and "error" not in result
+        except Exception as e:
+            print(f"[FeishuAdapter] upload_file failed: {e}")
+            return False

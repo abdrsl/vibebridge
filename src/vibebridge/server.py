@@ -103,8 +103,16 @@ async def feishu_webhook(request: Request):
     if message.chat_type == "group" and not message.is_bot_mentioned:
         return {"ok": True, "skipped": True, "reason": "Bot not mentioned in group"}
 
-    result = await orchestrator.handle_message(message)
-    return {"ok": True, **result}
+    try:
+        result = await orchestrator.handle_message(message)
+        return {"ok": True, **result}
+    except Exception as e:
+        print(f"[Webhook] Unhandled error in handle_message: {e}")
+        return {
+            "ok": True,
+            "status": "error",
+            "reason": f"Internal error: {e}",
+        }
 
 
 # Backward compatibility: legacy endpoint aliases

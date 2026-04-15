@@ -83,10 +83,28 @@ def init(
     cfg.agents.claude.enabled = scans["claude"]
     cfg.agents.openclaw.enabled = scans["openclaw"]
 
-    # Write config
+    # Write config (convert Paths to strings for safe YAML)
     config_dict = cfg.model_dump()
+    _convert_paths_to_strings(config_dict)
     with cfg.config_file.open("w", encoding="utf-8") as f:
         yaml.dump(config_dict, f, allow_unicode=True, sort_keys=False)
+
+
+def _convert_paths_to_strings(obj):
+    """Recursively convert Path objects to strings in a dict/list."""
+    from pathlib import Path
+    if isinstance(obj, dict):
+        for key, value in list(obj.items()):
+            if isinstance(value, Path):
+                obj[key] = str(value)
+            elif isinstance(value, (dict, list)):
+                _convert_paths_to_strings(value)
+    elif isinstance(obj, list):
+        for i, item in enumerate(obj):
+            if isinstance(item, Path):
+                obj[i] = str(item)
+            elif isinstance(item, (dict, list)):
+                _convert_paths_to_strings(item)
 
     mode = cfg.feishu.mode
     console.print(f"\n✅ 配置已保存到 [cyan]{cfg.config_file}[/cyan]")

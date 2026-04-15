@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import re
 from pathlib import Path
 
@@ -48,19 +49,28 @@ class TaskOrchestrator:
         self.sessions = session_manager
         self.approval = approval_engine
         self._active_cards: dict[str, str] = {}  # task_id -> message_id
+        self._task_timeout_seconds = 1800  # 30 minutes max per task
 
     async def handle_message(self, message: InboundMessage) -> dict:
         """Main entry point for incoming IM messages."""
         try:
             provider, prompt = self.router.resolve(message.text)
         except RuntimeError as e:
-            await self.im.send_text(message.chat_id, f"❌ {e}")
+            await self._safe_send_text(message.chat_id, f"❌ {e}")
             return {"status": "error", "reason": str(e)}
 
         # Check provider health
-        healthy, reason = await provider.health_check()
+        try:
+            healthy, reason = await provider.health_check()
+        except Exception as e:
+            await self._safe_send_text(
+                message.chat_id,
+                f"⚠️ Provider '{provider.display_name}' health check crashed: {e}",
+            )
+            return {"status": "error", "reason": str(e)}
+
         if not healthy:
-            await self.im.send_text(
+            await self._safe_send_text(
                 message.chat_id,
                 f"⚠️ Provider '{provider.display_name}' is not healthy: {reason}",
             )
@@ -70,7 +80,7 @@ class TaskOrchestrator:
         if self.approval and self.approval.config.enabled:
             risk = self.approval.evaluate(provider.name, prompt)
             if risk.level in ("high", "critical"):
-                await self.im.send_text(
+                await self._safe_send_text(
                     message.chat_id,
                     f"⏸️ 该命令被标记为 **{risk.level}** 风险，已提交审批。"
                     f"请等待管理员在飞书中批准。\n\n命令: `{prompt[:200]}`",
@@ -81,28 +91,44 @@ class TaskOrchestrator:
                 }
 
         # Session management
-        session = self.sessions.get_or_create(
-            user_id=message.sender_id,
-            chat_id=message.chat_id,
-            provider=provider.name,
-            workdir=provider.default_workdir(),
-        )
-        session.add_message("user", prompt)
-        self.sessions.save(session)
+        try:
+            session = self.sessions.get_or_create(
+                user_id=message.sender_id,
+                chat_id=message.chat_id,
+                provider=provider.name,
+                workdir=provider.default_workdir(),
+            )
+            session.add_message("user", prompt)
+            self.sessions.save(session)
+        except Exception as e:
+            await self._safe_send_text(
+                message.chat_id, f"❌ Session error: {e}"
+            )
+            return {"status": "error", "reason": f"session error: {e}"}
 
         # Create task
-        task_id = await provider.create_task(
-            prompt=prompt,
-            workdir=session.workdir,
-            session_id=session.session_id,
-            chat_id=message.chat_id,
-        )
+        try:
+            task_id = await provider.create_task(
+                prompt=prompt,
+                workdir=session.workdir,
+                session_id=session.session_id,
+                chat_id=message.chat_id,
+            )
+        except Exception as e:
+            await self._safe_send_text(
+                message.chat_id,
+                f"❌ Failed to create task with {provider.display_name}: {e}",
+            )
+            return {"status": "error", "reason": f"create_task failed: {e}"}
 
         # Send start card
-        start_card = render_start_card(task_id, provider.display_name, prompt)
-        start_msg_id = await self._send_card(message.chat_id, start_card)
-        if start_msg_id:
-            self._active_cards[task_id] = start_msg_id
+        try:
+            start_card = render_start_card(task_id, provider.display_name, prompt)
+            start_msg_id = await self._send_card(message.chat_id, start_card)
+            if start_msg_id:
+                self._active_cards[task_id] = start_msg_id
+        except Exception as e:
+            print(f"[TaskOrchestrator] Failed to send start card: {e}")
 
         # Run task in background so HTTP returns quickly
         asyncio.create_task(
@@ -123,64 +149,158 @@ class TaskOrchestrator:
         final_files: list[str] = []
 
         try:
-            async for event in provider.stream_task(task_id):
-                if event.type == StreamEventType.STATUS:
-                    progress_lines.append(event.content)
-                elif event.type == StreamEventType.TOOL_USE:
-                    progress_lines.append(event.content)
-                elif event.type == StreamEventType.TEXT:
-                    progress_lines.append(event.content)
-                elif event.type == StreamEventType.ERROR:
-                    progress_lines.append(f"❌ {event.content}")
-                elif event.type == StreamEventType.DONE:
-                    progress_lines.append(f"✅ {event.content}")
-
-                # Update progress card every few events or on terminal events
-                if event.type in (StreamEventType.STATUS, StreamEventType.TOOL_USE):
-                    progress_text = "\n".join(progress_lines[-20:])
-                    card = render_progress_card(
-                        task_id, provider.display_name, progress_text
-                    )
-                    await self._update_card(chat_id, task_id, card)
-
-            # Determine final result
-            # For now, use the last few lines or done content
-            result_text = "\n".join(progress_lines)
-            if not result_text.strip():
-                result_text = "任务执行完成，无文本输出。"
-
-            # TODO: Detect generated files in workdir and upload them
-            final_files = self._detect_new_files(session.workdir)
-
-            result_card = render_result_card(
-                task_id, provider.display_name, result_text, final_files
+            # Apply global task timeout
+            await asyncio.wait_for(
+                self._consume_stream(
+                    chat_id, provider, task_id, session, progress_lines, final_files
+                ),
+                timeout=self._task_timeout_seconds,
             )
-            await self._update_card(chat_id, task_id, result_card)
+        except asyncio.TimeoutError:
+            progress_lines.append(f"⏱️ 任务执行超过 {self._task_timeout_seconds} 秒，已强制终止。")
+            try:
+                await provider.cancel_task(task_id)
+            except Exception:
+                pass
+            error_card = render_error_card(
+                task_id,
+                f"任务超时（>{self._task_timeout_seconds}s）。"
+                f"可能原因：模型响应过慢或陷入死循环。",
+            )
+            await self._update_card(chat_id, task_id, error_card)
+        except Exception as e:
+            print(f"[TaskOrchestrator] Unexpected error in task {task_id}: {e}")
+            error_card = render_error_card(task_id, f"任务执行异常: {e}")
+            await self._update_card(chat_id, task_id, error_card)
 
+    async def _consume_stream(
+        self,
+        chat_id: str,
+        provider: BaseProvider,
+        task_id: str,
+        session,
+        progress_lines: list[str],
+        final_files: list[str],
+    ) -> None:
+        async for event in provider.stream_task(task_id):
+            if event.type == StreamEventType.STATUS:
+                progress_lines.append(event.content)
+            elif event.type == StreamEventType.TOOL_USE:
+                progress_lines.append(event.content)
+            elif event.type == StreamEventType.TEXT:
+                progress_lines.append(event.content)
+            elif event.type == StreamEventType.ERROR:
+                progress_lines.append(f"❌ {event.content}")
+            elif event.type == StreamEventType.DONE:
+                progress_lines.append(f"✅ {event.content}")
+
+            # Update progress card every few events or on terminal events
+            if event.type in (StreamEventType.STATUS, StreamEventType.TOOL_USE):
+                progress_text = "\n".join(progress_lines[-20:])
+                card = render_progress_card(
+                    task_id, provider.display_name, progress_text
+                )
+                await self._update_card(chat_id, task_id, card)
+
+        # Determine final result
+        result_text = "\n".join(progress_lines)
+        if not result_text.strip():
+            result_text = "任务执行完成，无文本输出。"
+
+        # Detect generated files
+        try:
+            final_files = self._detect_new_files(session.workdir)
+        except Exception as e:
+            print(f"[TaskOrchestrator] file detection error: {e}")
+
+        result_card = render_result_card(
+            task_id, provider.display_name, result_text, final_files
+        )
+        await self._update_card(chat_id, task_id, result_card)
+
+        try:
             session.add_message("assistant", result_text)
             self.sessions.save(session)
-
-            # Upload files if any
-            for fpath in final_files:
-                await self.im.upload_file(chat_id, fpath)
-
         except Exception as e:
-            error_card = render_error_card(task_id, str(e))
-            await self._update_card(chat_id, task_id, error_card)
+            print(f"[TaskOrchestrator] session save error: {e}")
+
+        # Upload files if any
+        for fpath in final_files:
+            try:
+                await self.im.upload_file(chat_id, fpath)
+            except Exception as e:
+                print(f"[TaskOrchestrator] upload_file error for {fpath}: {e}")
+                # Notify user that file exists but upload failed
+                await self._safe_send_text(
+                    chat_id,
+                    f"⚠️ 文件生成成功但上传失败：{fpath}\n错误：{e}",
+                )
+
+    async def _safe_send_text(self, chat_id: str, text: str) -> None:
+        """Send text with exception swallowed to avoid cascading failures."""
+        try:
+            await self.im.send_text(chat_id, text)
+        except Exception as e:
+            print(f"[TaskOrchestrator] safe_send_text failed: {e}")
 
     async def _send_card(self, chat_id: str, card: dict) -> str | None:
         """Send a card and return message_id if supported."""
-        # For now, FeishuAdapter will handle this; we just pass through.
-        # Return a dummy ID until FeishuAdapter supports real message IDs.
-        await self.im.send_card(chat_id, "interactive", card)
-        return f"msg_{id(card)}"
+        try:
+            await self.im.send_card(chat_id, "interactive", card)
+            return f"msg_{id(card)}"
+        except Exception as e:
+            print(f"[TaskOrchestrator] _send_card failed: {e}")
+            # Fallback to plain text summary
+            await self._safe_send_text(
+                chat_id,
+                f"[卡片发送失败，降级为文本] {card.get('header', {}).get('title', {}).get('content', 'VibeBridge Message')}",
+            )
+            return None
 
     async def _update_card(self, chat_id: str, task_id: str, card: dict) -> None:
         """Update an existing card or send a new one."""
-        # TODO: Implement card update via update_to_message_id when FeishuAdapter supports it.
-        await self.im.send_card(chat_id, "interactive", card)
+        try:
+            await self.im.send_card(chat_id, "interactive", card)
+        except Exception as e:
+            print(f"[TaskOrchestrator] _update_card failed: {e}")
+            # Fallback to text so user is not left hanging
+            header = card.get("header", {}).get("title", {}).get("content", "Update")
+            elements = card.get("elements", [])
+            text_body = ""
+            for el in elements:
+                txt = el.get("text", {}).get("content", "")
+                if txt:
+                    text_body = txt[:500]
+                    break
+            await self._safe_send_text(
+                chat_id,
+                f"{header}\n{text_body}",
+            )
 
     def _detect_new_files(self, workdir: str) -> list[str]:
-        """Detect recently modified files in workdir (placeholder heuristic)."""
-        # TODO: Implement proper file tracking by snapshotting before/after task.
-        return []
+        """Detect files modified in the last 5 minutes in workdir."""
+        import time
+
+        detected: list[str] = []
+        wd = Path(workdir).expanduser()
+        if not wd.exists():
+            return detected
+
+        now = time.time()
+        cutoff = now - 300  # 5 minutes
+
+        try:
+            for path in wd.rglob("*"):
+                if path.is_file() and path.stat().st_mtime > cutoff:
+                    # Exclude common temp/cache files
+                    if path.name.startswith("."):
+                        continue
+                    if path.suffix in (".tmp", ".log", ".pyc", ".pyo"):
+                        continue
+                    if "__pycache__" in str(path):
+                        continue
+                    detected.append(str(path.relative_to(wd)))
+        except Exception as e:
+            print(f"[TaskOrchestrator] _detect_new_files error: {e}")
+
+        return detected[:20]  # cap at 20 files
