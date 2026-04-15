@@ -185,8 +185,10 @@ class OpenCodeManager:
         }
 
         try:
+            # 使用绝对路径确保找到 opencode
+            opencode_path = "/home/user/.nvm/versions/node/v24.14.0/bin/opencode"
             cmd = [
-                "opencode",
+                opencode_path,
                 "run",
                 "--format",
                 "json",
@@ -340,6 +342,22 @@ class OpenCodeManager:
             }
             for t in tasks
         ]
+
+    async def cancel_task(self, task_id: str) -> bool:
+        async with self._lock:
+            task = self.tasks.get(task_id)
+            if not task:
+                return False
+            if task.process and task.process.returncode is None:
+                task.process.terminate()
+                try:
+                    await asyncio.wait_for(task.process.wait(), timeout=5)
+                except asyncio.TimeoutError:
+                    task.process.kill()
+                    await task.process.wait()
+            task.status = TaskStatus.CANCELLED
+            task.updated_at = datetime.now()
+            return True
 
 
 opencode_manager = OpenCodeManager()

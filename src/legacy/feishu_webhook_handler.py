@@ -98,6 +98,30 @@ async def handle_feishu_message(
     text = re.sub(r"^\s*@[^\s]+\s*", "", text)
     text = text.strip()
 
+    # 检查群组消息是否@机器人
+    chat_type = message.get("chat_type", "")
+    mentions = message.get("mentions", [])
+
+    # 如果是群组消息
+    if chat_type == "group":
+        # 检查是否有机器人提及
+        bot_mentioned = False
+        for mention in mentions:
+            if mention.get("mentioned_type") == "bot":
+                bot_mentioned = True
+                print(f"[Webhook] 机器人被提及: {mention.get('name', 'unknown')}")
+                break
+
+        if not bot_mentioned:
+            print(
+                f"[Webhook] 群组消息未@机器人，跳过处理。chat_id: {chat_id}, text: {text[:50]}..."
+            )
+            return {
+                "ok": True,
+                "skipped": True,
+                "reason": "Group message without bot mention",
+            }
+
     if not text:
         # 在后台发送提示消息，立即返回响应
         background_tasks.add_task(
@@ -111,9 +135,7 @@ async def handle_feishu_message(
     if text.lower() in ["help", "帮助", "/help"]:
         # 在后台发送帮助卡片，立即返回响应
         help_card = build_help_card()
-        background_tasks.add_task(
-            feishu_client.send_interactive_card, chat_id, help_card
-        )
+        background_tasks.add_task(feishu_client.send_interactive_card, chat_id, help_card)
         return {"ok": True, "handled": True, "action": "help"}
 
     # 检查是否是session操作
@@ -145,9 +167,7 @@ async def handle_feishu_message(
             SessionStatus.FAILED,
         ]:
             # 任务已完成或失败
-            status_text = (
-                "已完成" if session.status == SessionStatus.COMPLETED else "已失败"
-            )
+            status_text = "已完成" if session.status == SessionStatus.COMPLETED else "已失败"
             background_tasks.add_task(
                 feishu_client.send_text_message,
                 chat_id,
@@ -239,20 +259,14 @@ async def handle_feishu_message(
                 )
                 if not result.get("message_sent", False):
                     # 命令处理器未发送消息，发送响应消息
-                    response_msg = result.get("message") or cmd_config.get(
-                        "response", "指令已执行"
-                    )
+                    response_msg = result.get("message") or cmd_config.get("response", "指令已执行")
                     print(f"[Command] Sending response message: {response_msg[:50]}...")
 
                     # 直接使用asyncio.create_task发送消息，避免background_tasks问题
                     async def send_message_task():
                         try:
-                            print(
-                                "[Command] Starting to send message via feishu_client..."
-                            )
-                            result = await feishu_client.send_text_message(
-                                chat_id, response_msg
-                            )
+                            print("[Command] Starting to send message via feishu_client...")
+                            result = await feishu_client.send_text_message(chat_id, response_msg)
                             print(f"[Command] Message send result: {result}")
                         except Exception as e:
                             print(f"[Command] Error sending message: {e}")
@@ -278,14 +292,22 @@ async def handle_feishu_message(
         else:
             # 执行失败
             error_msg = result.get("error", "指令执行失败")
-            background_tasks.add_task(
-                feishu_client.send_text_message, chat_id, f"❌ {error_msg}"
-            )
+            background_tasks.add_task(feishu_client.send_text_message, chat_id, f"❌ {error_msg}")
             return {"ok": False, "error": error_msg}
 
     # 获取或创建session
     session_manager = get_session_manager()
     session = await session_manager.get_or_create_session(chat_id, sender_id)
+
+    # 检查是否WebSocket模式
+    from .config_manager import get_config_manager
+
+    config_manager = get_config_manager()
+    feishu_mode = config_manager.get_feishu_mode()
+    is_websocket_mode = feishu_mode == "websocket"
+    print(
+        f"[Session] WebSocket mode check: feishu_mode={feishu_mode}, is_websocket_mode={is_websocket_mode}"
+    )
 
     if not session:
         return {"ok": True, "error": "Failed to create session"}
@@ -300,101 +322,148 @@ async def handle_feishu_message(
 
     # 根据session状态处理
     if session.status == SessionStatus.PENDING:
-        # 新session，发送确认卡片
-        confirmation_card = build_confirmation_card(
-            session_id=session.session_id,
-            user_message=text,
-        )
+        # 检查是否WebSocket模式，如果是则自动确认并开始执行
+        if is_websocket_mode:
+            # WebSocket模式：自动确认并开始执行
+            print(f"[Session] WebSocket模式，自动确认session {session.session_id}")
 
-        print(f"[Session] Sending confirmation card for session {session.session_id}")
-        print(f"[Session] Card will be sent to chat_id: {chat_id}")
+            # 更新session状态为已确认
+            await session_manager.update_session(
+                session.session_id,
+                status=SessionStatus.CONFIRMED,
+            )
 
-        background_tasks.add_task(
-            feishu_client.send_interactive_card,
-            chat_id,
-            confirmation_card,
-        )
+            # 开始执行任务
+            return await start_opencode_task(session, text, chat_id, background_tasks)
+        else:
+            # Webhook模式：发送确认卡片
+            confirmation_card = build_confirmation_card(
+                session_id=session.session_id,
+                user_message=text,
+            )
 
-        # 更新session状态为等待确认
-        await session_manager.update_session(
-            session.session_id,
-            status=SessionStatus.PENDING,
-        )
+            print(f"[Session] Sending confirmation card for session {session.session_id}")
+            print(f"[Session] Card will be sent to chat_id: {chat_id}")
 
-        return {
-            "ok": True,
-            "session_id": session.session_id,
-            "status": "pending_confirmation",
-        }
+            background_tasks.add_task(
+                feishu_client.send_interactive_card,
+                chat_id,
+                confirmation_card,
+            )
+
+            # 更新session状态为等待确认
+            await session_manager.update_session(
+                session.session_id,
+                status=SessionStatus.PENDING,
+            )
+
+            return {
+                "ok": True,
+                "session_id": session.session_id,
+                "status": "pending_confirmation",
+            }
 
     elif session.status == SessionStatus.CONFIRMED:
         # 用户已确认，开始执行任务
         return await start_opencode_task(session, text, chat_id, background_tasks)
 
     elif session.status == SessionStatus.RUNNING:
-        # 任务正在执行中，提示用户等待
-        background_tasks.add_task(
-            feishu_client.send_text_message,
-            chat_id,
-            "⏳ 当前有任务正在执行中，请等待完成后再发送新任务。",
+        # 任务正在执行中
+        # 无论WebSocket还是Webhook模式，都取消旧任务并开始新任务
+        # 这样避免了CLI任务和飞书任务的冲突
+        print(f"[Session] Session {session.session_id} 状态为 RUNNING，取消旧任务并开始新任务")
+        # 尝试取消旧任务
+        if session.current_task_id:
+            try:
+                cancelled = await opencode_manager.cancel_task(session.current_task_id)
+                print(f"[Session] 取消旧任务 {session.current_task_id}: {cancelled}")
+            except Exception as e:
+                print(f"[Session] 取消任务失败: {e}")
+        # 更新session状态为已确认
+        await session_manager.update_session(
+            session.session_id,
+            status=SessionStatus.CONFIRMED,
         )
-        return {
-            "ok": True,
-            "session_id": session.session_id,
-            "status": "already_running",
-        }
+        # 开始执行新任务
+        return await start_opencode_task(session, text, chat_id, background_tasks)
 
     elif session.status in [
         SessionStatus.COMPLETED,
         SessionStatus.FAILED,
         SessionStatus.CANCELLED,
     ]:
-        # 之前的任务已完成/失败/取消，询问是否继续
-        previous_task = (
-            session.messages[-2].content if len(session.messages) >= 2 else "未知任务"
-        )
+        # 之前的任务已完成/失败/取消
+        if is_websocket_mode:
+            # WebSocket模式：自动开始新任务
+            print(
+                f"[Session] WebSocket模式，session {session.session_id} 状态为 {session.status}，自动开始新任务"
+            )
+            # 更新session状态为已确认
+            await session_manager.update_session(
+                session.session_id,
+                status=SessionStatus.CONFIRMED,
+            )
+            # 开始执行任务
+            return await start_opencode_task(session, text, chat_id, background_tasks)
+        else:
+            # Webhook模式：询问是否继续
+            previous_task = (
+                session.messages[-2].content if len(session.messages) >= 2 else "未知任务"
+            )
 
-        continue_card = build_session_continue_card(
-            session_id=session.session_id,
-            previous_task=previous_task,
-            user_message=text,
-        )
+            continue_card = build_session_continue_card(
+                session_id=session.session_id,
+                previous_task=previous_task,
+                user_message=text,
+            )
 
-        background_tasks.add_task(
-            feishu_client.send_interactive_card,
-            chat_id,
-            continue_card,
-        )
+            background_tasks.add_task(
+                feishu_client.send_interactive_card,
+                chat_id,
+                continue_card,
+            )
 
-        return {
-            "ok": True,
-            "session_id": session.session_id,
-            "status": "awaiting_continuation_choice",
-        }
+            return {
+                "ok": True,
+                "session_id": session.session_id,
+                "status": "awaiting_continuation_choice",
+            }
 
     else:
         # 未知状态，重置session
-        await session_manager.update_session(
-            session.session_id,
-            status=SessionStatus.PENDING,
-        )
+        if is_websocket_mode:
+            # WebSocket模式：自动开始新任务
+            print(f"[Session] WebSocket模式，session {session.session_id} 状态未知，自动开始新任务")
+            # 更新session状态为已确认
+            await session_manager.update_session(
+                session.session_id,
+                status=SessionStatus.CONFIRMED,
+            )
+            # 开始执行任务
+            return await start_opencode_task(session, text, chat_id, background_tasks)
+        else:
+            # Webhook模式：重置session并发送确认卡片
+            await session_manager.update_session(
+                session.session_id,
+                status=SessionStatus.PENDING,
+            )
 
-        confirmation_card = build_confirmation_card(
-            session_id=session.session_id,
-            user_message=text,
-        )
+            confirmation_card = build_confirmation_card(
+                session_id=session.session_id,
+                user_message=text,
+            )
 
-        background_tasks.add_task(
-            feishu_client.send_interactive_card,
-            chat_id,
-            confirmation_card,
-        )
+            background_tasks.add_task(
+                feishu_client.send_interactive_card,
+                chat_id,
+                confirmation_card,
+            )
 
-        return {
-            "ok": True,
-            "session_id": session.session_id,
-            "status": "reset_to_pending",
-        }
+            return {
+                "ok": True,
+                "session_id": session.session_id,
+                "status": "reset_to_pending",
+            }
 
 
 async def start_opencode_task(
@@ -452,17 +521,37 @@ async def run_opencode_with_session(
     """使用session运行OpenCode任务 - 实时文本滚轮显示版本"""
     print(f"[Session] Starting task {task_id} for session {session_id}")
 
+    # 检查是否WebSocket模式
+    from .config_manager import get_config_manager
+
+    config_manager = get_config_manager()
+    is_websocket_mode = config_manager.get_feishu_mode() == "websocket"
+    print(
+        f"[Session] WebSocket mode detection: is_websocket_mode={is_websocket_mode}, notify={notify}, feishu_mode={config_manager.get_feishu_mode()}"
+    )
+
+    # WebSocket模式下保持通知开启（用户需要实时进度卡片）
+    if is_websocket_mode:
+        notify = True
+        print("[Session] WebSocket mode: notify forced to True (user wants progress cards)")
+
     session_manager = get_session_manager()
 
     # 获取session以获取用户消息
     session = await session_manager.get_session(session_id)
     user_message = ""
     if session and session.messages:
-        # 查找第一个用户消息
-        for msg in session.messages:
+        # 查找最后一个用户消息（最新的）
+        for msg in reversed(session.messages):
             if msg.role == "user":
                 user_message = msg.content
                 break
+        # 如果找不到最新的，使用第一个
+        if not user_message:
+            for msg in session.messages:
+                if msg.role == "user":
+                    user_message = msg.content
+                    break
 
     card_message_id = None
     text_message_id = None  # 后备：文本消息ID
@@ -530,12 +619,7 @@ async def run_opencode_with_session(
 
         # 查找最近的text事件（不是tool_use或status）
         for line in reversed(output_lines):
-            if (
-                line
-                and len(line) > 10
-                and not line.startswith("🛠️")
-                and not line.startswith("正在")
-            ):
+            if line and len(line) > 10 and not line.startswith("🛠️") and not line.startswith("正在"):
                 # 提取简短摘要
                 summary = line[:100] + "..." if len(line) > 100 else line
                 return summary
@@ -545,15 +629,9 @@ async def run_opencode_with_session(
     # 动态显示更新函数 - 优先使用卡片，后备使用文本
     async def update_display_message():
         """更新显示消息 - 优先使用交互卡片更新，失败时使用文本消息"""
-        nonlocal \
-            card_message_id, \
-            text_message_id, \
-            output_lines, \
-            update_count, \
-            current_phase, \
-            completed_phases, \
-            send_failures, \
-            max_failures
+        nonlocal card_message_id, text_message_id, output_lines, update_count, current_phase, completed_phases, send_failures, max_failures
+
+        # WebSocket模式下也发送更新消息（用户需要实时进度卡片）
 
         if not output_lines:
             return
@@ -569,10 +647,8 @@ async def run_opencode_with_session(
         phase, progress = estimate_phase_and_progress()
         thought_summary = extract_thought_summary()
 
-        # 最近输出（最近3行）
-        recent_output_lines = (
-            output_lines[-3:] if len(output_lines) >= 3 else output_lines
-        )
+        # 最近输出（最近30行）
+        recent_output_lines = output_lines[-30:] if len(output_lines) >= 30 else output_lines
         recent_output = "\n".join(recent_output_lines)
 
         # 尝试使用卡片更新（首选）
@@ -601,9 +677,7 @@ async def run_opencode_with_session(
                         # 卡片更新成功
                         update_count += 1
                         send_failures = 0  # 重置失败计数器
-                        print(
-                            f"[Session] Card updated successfully, ID: {card_message_id}"
-                        )
+                        print(f"[Session] Card updated successfully, ID: {card_message_id}")
                         return
                     else:
                         # 卡片更新失败，尝试发送新卡片
@@ -619,9 +693,7 @@ async def run_opencode_with_session(
                         if new_message_id:
                             card_message_id = new_message_id
                             update_count += 1
-                            print(
-                                f"[Session] New card sent successfully, ID: {card_message_id}"
-                            )
+                            print(f"[Session] New card sent successfully, ID: {card_message_id}")
                             send_failures = 0  # 重置失败计数器
                             return
                         else:
@@ -636,12 +708,12 @@ async def run_opencode_with_session(
 
         # 卡片更新失败，回退到文本消息更新
         # 构建文本消息内容
-        display_lines = output_lines[-10:] if len(output_lines) > 10 else output_lines
+        display_lines = output_lines[-30:] if len(output_lines) > 30 else output_lines
         message_content = "## 🔨 OpenCode 任务执行中\n\n"
         message_content += f"**任务ID:** `{task_id}`\n"
         message_content += f"**当前阶段:** {phase} ({progress}%)\n\n"
         message_content += "**最近输出:**\n```\n"
-        message_content += "\n".join(display_lines[-5:]) if display_lines else "无输出"
+        message_content += "\n".join(display_lines) if display_lines else "无输出"
         message_content += "\n```\n\n"
 
         if thought_summary:
@@ -662,9 +734,7 @@ async def run_opencode_with_session(
                 if update_result and update_result.get("code") == 0:
                     # 文本更新成功
                     update_count += 1
-                    print(
-                        f"[Session] Text message updated successfully, ID: {text_message_id}"
-                    )
+                    print(f"[Session] Text message updated successfully, ID: {text_message_id}")
                     send_failures = 0  # 重置失败计数器
                     return
                 else:
@@ -690,9 +760,7 @@ async def run_opencode_with_session(
                 if new_message_id:
                     text_message_id = new_message_id
                     update_count += 1
-                    print(
-                        f"[Session] New text message sent successfully, ID: {text_message_id}"
-                    )
+                    print(f"[Session] New text message sent successfully, ID: {text_message_id}")
                     send_failures = 0  # 重置失败计数器
                 else:
                     print("[Session] No message ID in text result")
@@ -705,9 +773,10 @@ async def run_opencode_with_session(
             send_failures += 1  # 递增失败计数器
 
     try:
+        print(f"[Session] Debug: notify={notify}, is_websocket_mode={is_websocket_mode}")
         if notify:
-            # 发送初始消息 - 优先使用卡片
-            print(f"[Session] Sending initial message to {chat_id}")
+            # 发送初始消息（WebSocket和Webhook模式都发送）
+            print(f"[Session] Sending initial message to {chat_id} (WebSocket={is_websocket_mode})")
 
             # 尝试发送初始卡片
             try:
@@ -724,9 +793,7 @@ async def run_opencode_with_session(
                     timeline=[],
                 )
 
-                result = await feishu_client.send_interactive_card(
-                    chat_id, initial_card
-                )
+                result = await feishu_client.send_interactive_card(chat_id, initial_card)
                 print(f"[Session] Initial card result: {result}")
 
                 if result and result.get("code") == 0:
@@ -737,9 +804,7 @@ async def run_opencode_with_session(
                     send_failures += 1  # 递增失败计数器
                     # 卡片发送失败，尝试发送文本消息
                     initial_message = f"## 🚀 OpenCode 任务已启动\n\n**任务ID:** `{task_id}`\n\n**开始执行...**\n\n⏳ 正在初始化，请稍候～"
-                    result = await feishu_client.send_text_message(
-                        chat_id, initial_message
-                    )
+                    result = await feishu_client.send_text_message(chat_id, initial_message)
                     print(f"[Session] Initial text message result: {result}")
 
                     if result and result.get("code") == 0:
@@ -747,9 +812,7 @@ async def run_opencode_with_session(
                         send_failures = 0  # 重置失败计数器（文本发送成功）
                         print(f"[Session] Text message ID: {text_message_id}")
                     else:
-                        print(
-                            f"[Session] Failed to send initial text message, result: {result}"
-                        )
+                        print(f"[Session] Failed to send initial text message, result: {result}")
                         send_failures += 1  # 递增失败计数器（文本发送也失败）
             except Exception as e:
                 print(f"[Session] Error sending initial message: {e}")
@@ -767,11 +830,7 @@ async def run_opencode_with_session(
             print(f"[Session] Event: {event_type} - {content[:50]}...")
 
             # 收集输出行用于显示
-            if (
-                event_type == "tool_use"
-                or event_type == "text"
-                or event_type == "status"
-            ):
+            if event_type == "tool_use" or event_type == "text" or event_type == "status":
                 output_lines.append(content)
                 if event_type == "tool_use":
                     tool_count += 1
@@ -819,9 +878,7 @@ async def run_opencode_with_session(
 
             if notify:
                 # 发送最终完成消息 - 优先更新现有卡片
-                print(
-                    f"[Session] Sending final completion message for session {session_id}"
-                )
+                print(f"[Session] Sending final completion message for session {session_id}")
 
                 try:
                     # 尝试更新现有卡片为完成状态
@@ -852,9 +909,7 @@ async def run_opencode_with_session(
                             )
                         else:
                             # 卡片更新失败，发送新卡片
-                            print(
-                                f"[Session] Failed to update card to completed: {update_result}"
-                            )
+                            print(f"[Session] Failed to update card to completed: {update_result}")
                             result = await feishu_client.send_interactive_card(
                                 chat_id, completion_card
                             )
@@ -879,9 +934,7 @@ async def run_opencode_with_session(
                             )
                         else:
                             # 文本更新失败，发送新消息
-                            print(
-                                f"[Session] Failed to update text message: {update_result}"
-                            )
+                            print(f"[Session] Failed to update text message: {update_result}")
                             result = await feishu_client.send_text_message(
                                 chat_id, completion_message
                             )
@@ -902,20 +955,26 @@ async def run_opencode_with_session(
                             status="completed",
                             timeline=completed_phases,
                         )
-                        result = await feishu_client.send_interactive_card(
-                            chat_id, completion_card
-                        )
+                        result = await feishu_client.send_interactive_card(chat_id, completion_card)
                         print(f"[Session] New completion card sent: {result}")
                 except Exception as e:
                     print(f"[Session] Error sending completion message: {e}")
                     # 后备：发送简单文本消息
                     try:
-                        completion_message = f"## 🎉 OpenCode 任务完成\n\n**任务ID:** `{task_id}`\n\n✅ 任务已完成"
-                        await feishu_client.send_text_message(
-                            chat_id, completion_message
+                        completion_message = (
+                            f"## 🎉 OpenCode 任务完成\n\n**任务ID:** `{task_id}`\n\n✅ 任务已完成"
                         )
+                        await feishu_client.send_text_message(chat_id, completion_message)
                     except:
                         pass
+            elif is_websocket_mode:
+                # WebSocket模式：发送简单的完成消息（无进度更新）
+                print(f"[Session] WebSocket mode: sending final result for session {session_id}")
+                try:
+                    completion_message = f"✅ OpenCode 任务完成\n\n任务ID: `{task_id}`\n\n结果: {final_result[:500]}{'...' if len(final_result) > 500 else ''}"
+                    await feishu_client.send_text_message(chat_id, completion_message)
+                except Exception as e:
+                    print(f"[Session] Error sending WebSocket completion message: {e}")
 
         elif error_result:
             await session_manager.update_session(
@@ -956,17 +1015,11 @@ async def run_opencode_with_session(
                             card_message_id, error_card
                         )
                         if update_result and update_result.get("code") == 0:
-                            print(
-                                f"[Session] Card updated to failed status, ID: {card_message_id}"
-                            )
+                            print(f"[Session] Card updated to failed status, ID: {card_message_id}")
                         else:
                             # 卡片更新失败，发送新卡片
-                            print(
-                                f"[Session] Failed to update card to failed: {update_result}"
-                            )
-                            result = await feishu_client.send_interactive_card(
-                                chat_id, error_card
-                            )
+                            print(f"[Session] Failed to update card to failed: {update_result}")
+                            result = await feishu_client.send_interactive_card(chat_id, error_card)
                             print(f"[Session] New error card sent: {result}")
                     elif text_message_id:
                         # 只有文本消息，更新文本消息
@@ -988,12 +1041,8 @@ async def run_opencode_with_session(
                             )
                         else:
                             # 文本更新失败，发送新消息
-                            print(
-                                f"[Session] Failed to update text message: {update_result}"
-                            )
-                            result = await feishu_client.send_text_message(
-                                chat_id, error_message
-                            )
+                            print(f"[Session] Failed to update text message: {update_result}")
+                            result = await feishu_client.send_text_message(chat_id, error_message)
                             print(f"[Session] New error message sent: {result}")
                     else:
                         # 没有现有消息，发送新卡片
@@ -1009,9 +1058,7 @@ async def run_opencode_with_session(
                             status="failed",
                             timeline=completed_phases,
                         )
-                        result = await feishu_client.send_interactive_card(
-                            chat_id, error_card
-                        )
+                        result = await feishu_client.send_interactive_card(chat_id, error_card)
                         print(f"[Session] New error card sent: {result}")
                 except Exception as e:
                     print(f"[Session] Error sending error message: {e}")
@@ -1021,6 +1068,14 @@ async def run_opencode_with_session(
                         await feishu_client.send_text_message(chat_id, error_message)
                     except:
                         pass
+            elif is_websocket_mode:
+                # WebSocket模式：发送简单的错误消息（无进度更新）
+                print(f"[Session] WebSocket mode: sending error result for session {session_id}")
+                try:
+                    error_message = f"❌ OpenCode 任务失败\n\n任务ID: `{task_id}`\n\n错误: {error_result[:500]}{'...' if len(error_result) > 500 else ''}"
+                    await feishu_client.send_text_message(chat_id, error_message)
+                except Exception as e:
+                    print(f"[Session] Error sending WebSocket error message: {e}")
 
     except Exception as e:
         print(f"[Session] Error: {e}")
@@ -1051,9 +1106,7 @@ async def run_opencode_with_session(
             if text_message_id:
                 try:
                     await feishu_client.delete_message(text_message_id)
-                    print(
-                        "[Session] Deleted progress message before sending exception message"
-                    )
+                    print("[Session] Deleted progress message before sending exception message")
                 except Exception as delete_error:
                     print(f"[Session] Error deleting progress message: {delete_error}")
 
@@ -1063,6 +1116,14 @@ async def run_opencode_with_session(
                 print(f"[Session] Exception message sent: {result}")
             except Exception as send_error:
                 print(f"[Session] Failed to send exception message: {send_error}")
+        elif is_websocket_mode:
+            # WebSocket模式：发送简单的异常消息
+            print(f"[Session] WebSocket mode: sending exception message for session {session_id}")
+            try:
+                error_message = f"⚠️ OpenCode 任务异常\n\n任务ID: `{task_id}`\n\n异常: {str(e)[:200]}{'...' if len(str(e)) > 200 else ''}"
+                await feishu_client.send_text_message(chat_id, error_message)
+            except Exception as send_error:
+                print(f"[Session] Failed to send WebSocket exception message: {send_error}")
 
 
 async def handle_session_status(
@@ -1092,9 +1153,7 @@ async def handle_session_status(
         status_card = build_session_status_card(
             session_id=session_info["session_id"],
             status=session_info["status"],
-            task_description=session_info.get("metadata", {}).get(
-                "last_task", "未知任务"
-            ),
+            task_description=session_info.get("metadata", {}).get("last_task", "未知任务"),
             progress=f"创建时间: {datetime.fromtimestamp(session_info['created_at']).strftime('%H:%M:%S')}",
             actions_available=True,
         )

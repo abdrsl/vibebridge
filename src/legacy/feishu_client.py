@@ -133,16 +133,16 @@ class FeishuClient:
         return self.default_chat_id or None
 
     async def send_text_message(
-        self, receive_id: str | None, text: str
+        self, receive_id: str | None, text: str, receive_id_type: str = "chat_id"
     ) -> dict[str, Any] | None:
         if not receive_id:
             receive_id = self.default_chat_id
         if not receive_id:
-            print("[Feishu] Error: No chat_id provided for text message")
-            return {"error": "No chat_id provided"}
+            print(f"[Feishu] Error: No receive_id provided for text message (type: {receive_id_type})")
+            return {"error": "No receive_id provided"}
 
         print(
-            f"[Feishu] Sending text message to {receive_id[:10]}..., length: {len(text)}"
+            f"[Feishu] Sending text message to {receive_id[:10]}... (type: {receive_id_type}), length: {len(text)}"
         )
         print(f"[Feishu] Message preview: {text[:100]}...")
 
@@ -151,7 +151,7 @@ class FeishuClient:
             print("[Feishu] Error: Failed to get access token")
             return {"error": "Failed to get access token"}
 
-        url = f"{self.api_base}/im/v1/messages?receive_id_type=chat_id"
+        url = f"{self.api_base}/im/v1/messages?receive_id_type={receive_id_type}"
         headers = {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
@@ -217,12 +217,13 @@ class FeishuClient:
         self,
         receive_id: str | None,
         card: dict[str, Any],
+        receive_id_type: str = "chat_id",
     ) -> dict[str, Any] | None:
         if not receive_id:
             receive_id = self.default_chat_id
         if not receive_id:
-            print("[Feishu] Error: No chat_id provided")
-            return {"error": "No chat_id provided"}
+            print(f"[Feishu] Error: No receive_id provided (type: {receive_id_type})")
+            return {"error": "No receive_id provided"}
 
         print(f"[Feishu] Getting access token, app_id={self.app_id[:5]}...")
         token = await self.get_tenant_access_token()
@@ -230,7 +231,7 @@ class FeishuClient:
             print("[Feishu] Error: Failed to get access token")
             return {"error": "Failed to get access token"}
 
-        url = f"{self.api_base}/im/v1/messages?receive_id_type=chat_id"
+        url = f"{self.api_base}/im/v1/messages?receive_id_type={receive_id_type}"
         headers = {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
@@ -242,7 +243,7 @@ class FeishuClient:
             "content": json.dumps(card),
         }
 
-        print(f"[Feishu] Sending interactive card to {receive_id}")
+        print(f"[Feishu] Sending interactive card to {receive_id} (type: {receive_id_type})")
         print(f"[Feishu] Card preview: {json.dumps(card)[:200]}...")
 
         try:

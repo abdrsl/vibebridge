@@ -198,6 +198,46 @@ class SessionManager:
                     and not session.is_expired()
                     and session.status not in [SessionStatus.CANCELLED]
                 ):
+                    # 检查RUNNING状态的session是否对应有效的任务
+                    if (
+                        session.status == SessionStatus.RUNNING
+                        and session.current_task_id
+                    ):
+                        try:
+                            # 动态导入OpenCode管理器来检查任务状态
+                            from .opencode_integration import opencode_manager
+
+                            task = await opencode_manager.get_task(
+                                session.current_task_id
+                            )
+                            if not task:
+                                # 任务不存在，重置session状态为COMPLETED
+                                print(
+                                    f"[Session] RUNNING session {session.session_id} has invalid task {session.current_task_id}, resetting to COMPLETED"
+                                )
+                                session.status = SessionStatus.COMPLETED
+                                session.current_task_id = None
+                                self._save_session(session)
+                            elif task.status.value != "running":
+                                # 任务存在但不在运行状态，同步session状态
+                                print(
+                                    f"[Session] Syncing session {session.session_id} status with task {session.current_task_id} status: {task.status.value}"
+                                )
+                                if task.status.value == "completed":
+                                    session.status = SessionStatus.COMPLETED
+                                elif task.status.value == "failed":
+                                    session.status = SessionStatus.FAILED
+                                elif task.status.value == "pending":
+                                    session.status = SessionStatus.PENDING
+                                self._save_session(session)
+                        except ImportError:
+                            # OpenCode管理器不可用，跳过检查
+                            pass
+                        except Exception as e:
+                            print(
+                                f"[Session] Error checking task status for session {session.session_id}: {e}"
+                            )
+
                     session.renew()
                     self._save_session(session)
                     return session

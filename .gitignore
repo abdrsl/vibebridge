@@ -92,6 +92,7 @@ simple_demo.py
 start_ngrok.sh
 .RADME.md.swp
 /*.sh
+!install.sh
 /*.tar.gz
 
 openclaw-feishu-bridge-archive.tar.gz

@@ -13,6 +13,9 @@ from .manager import (
     approval_manager,
 )
 
+# 导入Feishu客户端
+from src.legacy.feishu_client import feishu_client
+
 
 class FeishuApprovalHandler:
     """飞书审批处理器 - 机器人C的交互实现"""
@@ -21,6 +24,10 @@ class FeishuApprovalHandler:
         self.webhook_url = os.getenv("FEISHU_APPROVAL_WEBHOOK_URL")
         self.app_id = os.getenv("FEISHU_APP_ID")
         self.app_secret = os.getenv("FEISHU_APP_SECRET")
+        self.feishu_client = feishu_client
+        self.default_chat_id = os.getenv(
+            "FEISHU_DEFAULT_CHAT_ID", "oc_REDACTED_CHAT_ID"
+        )
 
     async def send_approval_request(
         self, user_id: str, approval_id: str, chat_id: Optional[str] = None
@@ -49,11 +56,19 @@ class FeishuApprovalHandler:
                 return True
 
         # 发送方式2: 通过Bot API (机器人C)
-        if chat_id:
-            success = await self._send_to_chat(chat_id, card)
-        else:
-            success = await self._send_to_user(user_id, card)
+        # 如果没有提供chat_id，使用默认chat_id（避免open_id跨应用问题）
+        target_chat_id = chat_id if chat_id else self.default_chat_id
+        if target_chat_id:
+            success = await self._send_to_chat(target_chat_id, card)
+            if success:
+                print(f"[FeishuApproval] Sent to chat {target_chat_id}: {approval_id}")
+                return success
 
+        # 如果既没有chat_id也没有default_chat_id，尝试发送给用户（可能失败）
+        print(
+            f"[FeishuApproval] No chat_id provided, attempting to send to user (may fail due to open_id cross app)"
+        )
+        success = await self._send_to_user(user_id, card)
         if success:
             print(f"[FeishuApproval] Sent to user {user_id}: {approval_id}")
 
@@ -85,16 +100,116 @@ class FeishuApprovalHandler:
 
     async def _send_to_user(self, user_id: str, card: dict) -> bool:
         """通过Bot API发送给用户"""
-        # TODO: 实现Bot API调用
-        # 需要飞书App ID和Secret获取access_token
-        print(f"[FeishuApproval] Send to user {user_id} (TODO: implement Bot API)")
-        return False
+        try:
+            print(f"[FeishuApproval] Sending card to user {user_id}")
+
+            # 确定receive_id类型
+            receive_id_type = self._get_receive_id_type(user_id)
+            print(
+                f"[FeishuApproval] Using receive_id_type: {receive_id_type} for {user_id}"
+            )
+
+            # 首先尝试发送交互式卡片
+            result = await self.feishu_client.send_interactive_card(
+                user_id, card, receive_id_type=receive_id_type
+            )
+
+            if result and "error" not in result:
+                print(f"[FeishuApproval] Card sent successfully to user {user_id}")
+                return True
+            else:
+                # 如果卡片发送失败，尝试发送文本消息作为备用
+                print(f"[FeishuApproval] Card send failed, trying text message")
+
+                # 从卡片中提取文本内容
+                card_text = self._extract_text_from_card(card)
+                if card_text:
+                    text_result = await self.feishu_client.send_text_message(
+                        user_id, card_text, receive_id_type=receive_id_type
+                    )
+                    if text_result and "error" not in text_result:
+                        print(f"[FeishuApproval] Text message sent as fallback")
+                        return True
+
+                print(f"[FeishuApproval] Failed to send to user {user_id}: {result}")
+                return False
+
+        except Exception as e:
+            print(f"[FeishuApproval] Error sending to user {user_id}: {e}")
+            return False
 
     async def _send_to_chat(self, chat_id: str, card: dict) -> bool:
         """通过Bot API发送到群聊"""
-        # TODO: 实现Bot API调用
-        print(f"[FeishuApproval] Send to chat {chat_id} (TODO: implement Bot API)")
-        return False
+        try:
+            print(f"[FeishuApproval] Sending card to chat {chat_id}")
+
+            # 确定receive_id类型
+            receive_id_type = self._get_receive_id_type(chat_id)
+            print(
+                f"[FeishuApproval] Using receive_id_type: {receive_id_type} for {chat_id}"
+            )
+
+            result = await self.feishu_client.send_interactive_card(
+                chat_id, card, receive_id_type=receive_id_type
+            )
+
+            if result and "error" not in result:
+                print(f"[FeishuApproval] Card sent successfully to chat {chat_id}")
+                return True
+            else:
+                print(f"[FeishuApproval] Failed to send to chat {chat_id}: {result}")
+                return False
+
+        except Exception as e:
+            print(f"[FeishuApproval] Error sending to chat {chat_id}: {e}")
+            return False
+
+    def _extract_text_from_card(self, card: dict) -> str:
+        """从卡片中提取文本内容，用于备用文本消息"""
+        try:
+            elements = card.get("elements", [])
+            text_parts = []
+
+            for element in elements:
+                if element.get("tag") == "div" and "text" in element:
+                    text_content = element["text"].get("content", "")
+                    if text_content:
+                        # 清理markdown格式
+                        text_content = text_content.replace("**", "").replace("`", "")
+                        text_parts.append(text_content)
+                elif element.get("tag") == "markdown":
+                    text_content = element.get("content", "")
+                    if text_content:
+                        text_parts.append(text_content)
+
+            if text_parts:
+                return "\n".join(text_parts[:3])  # 限制为前3个部分
+
+            # 如果有标题，使用标题
+            header = card.get("header", {})
+            title = header.get("title", {})
+            if isinstance(title, dict):
+                title_text = title.get("content", "")
+                if title_text:
+                    return title_text
+
+            return "审批请求通知（请查看卡片详情）"
+
+        except Exception as e:
+            print(f"[FeishuApproval] Error extracting text from card: {e}")
+            return "新的审批请求等待处理"
+
+    def _get_receive_id_type(self, receive_id: str) -> str:
+        """根据receive_id判断其类型"""
+        if receive_id.startswith("ou_"):
+            return "open_id"
+        elif receive_id.startswith("oc_"):
+            return "chat_id"
+        elif receive_id.startswith("on_"):
+            return "union_id"
+        else:
+            # 默认假设是chat_id，因为历史代码使用chat_id
+            return "chat_id"
 
     async def update_approval_card(self, message_id: str, approval_id: str) -> bool:
         """更新审批卡片为结果状态"""
