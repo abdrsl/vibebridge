@@ -4,6 +4,7 @@
 
 import asyncio
 import json
+import os
 from datetime import datetime
 from typing import Any, Dict
 
@@ -473,11 +474,19 @@ async def start_opencode_task(
     background_tasks: BackgroundTasks,
 ) -> Dict[str, Any]:
     """开始OpenCode任务"""
-    # 创建OpenCode任务
+    # 创建OpenCode任务 - 飞书访问时默认permit all
+    # 检查环境变量 FEISHU_PERMIT_ALL，默认为 True
+    feishu_permit_all = os.getenv("FEISHU_PERMIT_ALL", "true").lower() in ("true", "1", "yes", "y")
+    check_constitution = not feishu_permit_all
+
     task_id = await opencode_manager.create_task(
         user_message=user_message,
         feishu_chat_id=chat_id,
+        check_constitution=check_constitution,  # 根据环境变量控制宪法检查
     )
+
+    if feishu_permit_all:
+        print(f"[Security] Feishu permit all enabled, constitution check: {check_constitution}")
 
     # 更新session状态和任务ID
     session_manager = get_session_manager()

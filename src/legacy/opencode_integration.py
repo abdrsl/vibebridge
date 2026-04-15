@@ -57,21 +57,172 @@ PROJECT_ROOT = Path(__file__).parent.parent
 
 
 def filter_final_output(output_lines: list[str]) -> str:
-    """过滤输出行，移除工具调用行，返回最终结果"""
+    """过滤输出行，移除工具调用行和中间过程，返回最终结果"""
     filtered_lines = []
-    for line in output_lines:
-        # 移除工具调用行（以🛠️开头的行）
-        if line.strip().startswith("🛠️"):
-            continue
-        # 移除其他中间过程行（如"🛠️ 查看项目根目录结构:"等）
-        if "🛠️" in line and (":" in line or "：" in line):
-            continue
-        # 保留其他行
-        filtered_lines.append(line)
+    skip_patterns = [
+        # 工具调用行
+        "🛠️",
+        # 中间过程描述
+        "我将",
+        "正在",
+        "首先",
+        "接下来",
+        "然后",
+        "最后",
+        "开始",
+        "继续",
+        "接着",
+        "现在",
+        "正在启动",
+        "正在解析",
+        "正在分析",
+        "正在执行",
+        "正在处理",
+        "正在搜索",
+        "正在查找",
+        "正在检查",
+        "正在验证",
+        "正在读取",
+        "正在写入",
+        "正在更新",
+        "正在创建",
+        "正在删除",
+        "正在修改",
+        "正在优化",
+        "正在整理",
+        "正在清理",
+        "正在计算",
+        "正在统计",
+        "正在汇总",
+        "正在生成",
+        "正在构建",
+        "正在编译",
+        "正在安装",
+        "正在配置",
+        "正在初始化",
+        "正在准备",
+        "正在等待",
+        "正在连接",
+        "正在发送",
+        "正在接收",
+        "正在加载",
+        "正在保存",
+        "正在导出",
+        "正在导入",
+        "正在备份",
+        "正在恢复",
+        "正在重启",
+        "正在停止",
+        "正在启动",
+        "正在运行",
+        "正在测试",
+        "正在调试",
+        "正在评估",
+        "正在比较",
+        "正在合并",
+        "正在分割",
+        "正在转换",
+        "正在格式化",
+        "正在排序",
+        "正在过滤",
+        "正在提取",
+        "正在压缩",
+        "正在解压",
+        "正在加密",
+        "正在解密",
+        # 其他常见中间行
+        "---",
+        "====",
+        "####",
+        "****",
+        ">>>>",
+        "<<<<",
+        "~~~~",
+        "....",
+        "......",
+    ]
 
-    # 如果过滤后没有内容，返回原始输出的摘要
+    for line in output_lines:
+        line_stripped = line.strip()
+
+        # 跳过空行
+        if not line_stripped:
+            continue
+
+        # 检查是否匹配跳过模式
+        skip = False
+        for pattern in skip_patterns:
+            if line_stripped.startswith(pattern):
+                skip = True
+                break
+            if pattern in line_stripped and len(line_stripped) < 100:  # 短行中包含模式
+                skip = True
+                break
+
+        # 跳过思考/分析/执行等前缀
+        if (
+            line_stripped.startswith("[思考]")
+            or line_stripped.startswith("[分析]")
+            or line_stripped.startswith("[执行]")
+            or line_stripped.startswith("[步骤]")
+        ):
+            skip = True
+
+        # 跳过以表情符号开头后接中文动词的行
+        if any(
+            line_stripped.startswith(emoji)
+            for emoji in [
+                "🔍",
+                "📊",
+                "📝",
+                "🔄",
+                "⚙️",
+                "🔧",
+                "🔨",
+                "🛠️",
+                "🚀",
+                "✅",
+                "❌",
+                "⚠️",
+                "ℹ️",
+                "📌",
+                "📍",
+                "🔗",
+                "📎",
+                "📄",
+                "📁",
+                "📂",
+                "📅",
+                "📆",
+                "📋",
+                "📒",
+                "📓",
+                "📔",
+                "📕",
+                "📖",
+                "📗",
+                "📘",
+                "📙",
+                "📚",
+                "📛",
+                "📜",
+                "📝",
+            ]
+        ):
+            if any(
+                word in line_stripped
+                for word in ["正在", "将", "开始", "继续", "然后", "接下来", "最后"]
+            ):
+                skip = True
+
+        if not skip:
+            filtered_lines.append(line)
+
+    # 如果过滤后没有内容，返回原始输出的最后有意义部分
     if not filtered_lines:
-        return "\n".join(output_lines[-10:])  # 返回最后10行作为后备
+        # 返回最后10行非空行
+        non_empty = [line for line in output_lines if line.strip()]
+        return "\n".join(non_empty[-10:]) if non_empty else "无输出"
 
     return "\n".join(filtered_lines)
 
