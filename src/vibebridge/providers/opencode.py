@@ -100,7 +100,17 @@ class OpenCodeProvider(BaseProvider):
     ) -> str:
         # Ensure workdir exists
         wd = Path(workdir).expanduser()
-        wd.mkdir(parents=True, exist_ok=True)
+        try:
+            wd.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            # If custom workdir fails, fallback to default
+            wd = Path(self._default_workdir)
+            try:
+                wd.mkdir(parents=True, exist_ok=True)
+            except Exception as e2:
+                raise RuntimeError(
+                    f"Cannot create workdir {workdir} or fallback {self._default_workdir}: {e2}"
+                ) from e2
 
         task_id = (
             f"oc_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{session_id[-8:]}"
@@ -160,6 +170,9 @@ class OpenCodeProvider(BaseProvider):
             has_error = False
             total_deadline = asyncio.get_event_loop().time() + 1200  # 20 min total
 
+            if stdout is None:
+                raise RuntimeError("Subprocess stdout is None")
+
             while True:
                 # Global deadline guard
                 remaining = total_deadline - asyncio.get_event_loop().time()
@@ -167,7 +180,6 @@ class OpenCodeProvider(BaseProvider):
                     raise asyncio.TimeoutError("Total execution time exceeded 1200s")
 
                 try:
-                    assert stdout is not None
                     chunk = await asyncio.wait_for(
                         stdout.read(1024), timeout=min(60.0, remaining)
                     )
@@ -254,8 +266,11 @@ class OpenCodeProvider(BaseProvider):
             try:
                 await asyncio.wait_for(process.wait(), timeout=30.0)
             except asyncio.TimeoutError:
-                process.kill()
-                await process.wait()
+                try:
+                    process.kill()
+                    await asyncio.wait_for(process.wait(), timeout=5.0)
+                except Exception:
+                    pass
                 has_error = True
                 task.error = "OpenCode process did not exit in time after output ended"
 
@@ -350,12 +365,17 @@ class OpenCodeProvider(BaseProvider):
             if not task:
                 return False
             if task.process and task.process.returncode is None:
-                task.process.terminate()
                 try:
+                    task.process.terminate()
                     await asyncio.wait_for(task.process.wait(), timeout=5)
                 except asyncio.TimeoutError:
-                    task.process.kill()
-                    await task.process.wait()
+                    try:
+                        task.process.kill()
+                        await task.process.wait()
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
             task.status = TaskStatus.CANCELLED
             task.updated_at = datetime.now()
             return True

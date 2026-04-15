@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from .config import AgentsConfig
 from .providers.base import BaseProvider
 
@@ -35,7 +37,12 @@ class ProviderRouter:
         results: dict[str, tuple[bool, str]] = {}
         for name, provider in self.providers.items():
             try:
-                results[name] = await provider.health_check()
+                # Protect each provider's health check with a 10s timeout
+                results[name] = await asyncio.wait_for(
+                    provider.health_check(), timeout=10.0
+                )
+            except asyncio.TimeoutError:
+                results[name] = (False, "Health check timed out after 10s")
             except Exception as e:
                 results[name] = (False, str(e))
         return results

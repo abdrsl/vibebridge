@@ -50,6 +50,7 @@ class TaskOrchestrator:
         self.approval = approval_engine
         self._active_cards: dict[str, str] = {}  # task_id -> message_id
         self._task_timeout_seconds = 1800  # 30 minutes max per task
+        self._running_tasks: set[asyncio.Task] = set()
 
     async def handle_message(self, message: InboundMessage) -> dict:
         """Main entry point for incoming IM messages."""
@@ -90,13 +91,20 @@ class TaskOrchestrator:
                     "risk_level": risk.level,
                 }
 
+        # Resolve workdir safely
+        try:
+            workdir = provider.default_workdir()
+        except Exception as e:
+            workdir = str(Path.home() / "workspace")
+            print(f"[TaskOrchestrator] default_workdir failed, fallback to {workdir}: {e}")
+
         # Session management
         try:
             session = self.sessions.get_or_create(
                 user_id=message.sender_id,
                 chat_id=message.chat_id,
                 provider=provider.name,
-                workdir=provider.default_workdir(),
+                workdir=workdir,
             )
             session.add_message("user", prompt)
             self.sessions.save(session)
@@ -131,11 +139,22 @@ class TaskOrchestrator:
             print(f"[TaskOrchestrator] Failed to send start card: {e}")
 
         # Run task in background so HTTP returns quickly
-        asyncio.create_task(
-            self._run_task_stream(message.chat_id, provider, task_id, session)
-        )
+        task_coro = self._run_task_stream(message.chat_id, provider, task_id, session)
+        task_handle = asyncio.create_task(task_coro)
+        self._running_tasks.add(task_handle)
+        task_handle.add_done_callback(self._running_tasks.discard)
+        task_handle.add_done_callback(self._log_task_exception)
 
         return {"status": "accepted", "task_id": task_id}
+
+    def _log_task_exception(self, task: asyncio.Task) -> None:
+        """Log exceptions from background tasks to prevent 'never retrieved' warnings."""
+        try:
+            task.result()
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            print(f"[TaskOrchestrator] Background task crashed: {e}")
 
     async def _run_task_stream(
         self,
@@ -162,16 +181,28 @@ class TaskOrchestrator:
                 await provider.cancel_task(task_id)
             except Exception:
                 pass
-            error_card = render_error_card(
-                task_id,
-                f"任务超时（>{self._task_timeout_seconds}s）。"
-                f"可能原因：模型响应过慢或陷入死循环。",
-            )
-            await self._update_card(chat_id, task_id, error_card)
+            try:
+                error_card = render_error_card(
+                    task_id,
+                    f"任务超时（>{self._task_timeout_seconds}s）。"
+                    f"可能原因：模型响应过慢或陷入死循环。",
+                )
+                await self._update_card(chat_id, task_id, error_card)
+            except Exception as e2:
+                await self._safe_send_text(
+                    chat_id,
+                    f"❌ 任务超时且卡片发送失败: {e2}",
+                )
         except Exception as e:
             print(f"[TaskOrchestrator] Unexpected error in task {task_id}: {e}")
-            error_card = render_error_card(task_id, f"任务执行异常: {e}")
-            await self._update_card(chat_id, task_id, error_card)
+            try:
+                error_card = render_error_card(task_id, f"任务执行异常: {e}")
+                await self._update_card(chat_id, task_id, error_card)
+            except Exception as e2:
+                await self._safe_send_text(
+                    chat_id,
+                    f"❌ 任务异常且卡片发送失败: {e2}",
+                )
 
     async def _consume_stream(
         self,
@@ -182,25 +213,30 @@ class TaskOrchestrator:
         progress_lines: list[str],
         final_files: list[str],
     ) -> None:
-        async for event in provider.stream_task(task_id):
-            if event.type == StreamEventType.STATUS:
-                progress_lines.append(event.content)
-            elif event.type == StreamEventType.TOOL_USE:
-                progress_lines.append(event.content)
-            elif event.type == StreamEventType.TEXT:
-                progress_lines.append(event.content)
-            elif event.type == StreamEventType.ERROR:
-                progress_lines.append(f"❌ {event.content}")
-            elif event.type == StreamEventType.DONE:
-                progress_lines.append(f"✅ {event.content}")
+        try:
+            async for event in provider.stream_task(task_id):
+                if event.type == StreamEventType.STATUS:
+                    progress_lines.append(event.content)
+                elif event.type == StreamEventType.TOOL_USE:
+                    progress_lines.append(event.content)
+                elif event.type == StreamEventType.TEXT:
+                    progress_lines.append(event.content)
+                elif event.type == StreamEventType.ERROR:
+                    progress_lines.append(f"❌ {event.content}")
+                elif event.type == StreamEventType.DONE:
+                    progress_lines.append(f"✅ {event.content}")
 
-            # Update progress card every few events or on terminal events
-            if event.type in (StreamEventType.STATUS, StreamEventType.TOOL_USE):
-                progress_text = "\n".join(progress_lines[-20:])
-                card = render_progress_card(
-                    task_id, provider.display_name, progress_text
-                )
-                await self._update_card(chat_id, task_id, card)
+                # Update progress card every few events or on terminal events
+                if event.type in (StreamEventType.STATUS, StreamEventType.TOOL_USE):
+                    progress_text = "\n".join(progress_lines[-20:])
+                    card = render_progress_card(
+                        task_id, provider.display_name, progress_text
+                    )
+                    await self._update_card(chat_id, task_id, card)
+        except Exception as e:
+            # If provider stream itself breaks, record it and re-raise so outer layer sends error card
+            progress_lines.append(f"❌ 流式输出中断: {e}")
+            raise
 
         # Determine final result
         result_text = "\n".join(progress_lines)
@@ -213,10 +249,17 @@ class TaskOrchestrator:
         except Exception as e:
             print(f"[TaskOrchestrator] file detection error: {e}")
 
-        result_card = render_result_card(
-            task_id, provider.display_name, result_text, final_files
-        )
-        await self._update_card(chat_id, task_id, result_card)
+        try:
+            result_card = render_result_card(
+                task_id, provider.display_name, result_text, final_files
+            )
+            await self._update_card(chat_id, task_id, result_card)
+        except Exception as e:
+            await self._safe_send_text(
+                chat_id,
+                f"✅ 任务完成（卡片发送失败，降级为文本）\n\n{result_text[:1500]}",
+            )
+            raise
 
         try:
             session.add_message("assistant", result_text)
@@ -251,9 +294,14 @@ class TaskOrchestrator:
         except Exception as e:
             print(f"[TaskOrchestrator] _send_card failed: {e}")
             # Fallback to plain text summary
+            header = "VibeBridge Message"
+            try:
+                header = card.get("header", {}).get("title", {}).get("content", header)
+            except Exception:
+                pass
             await self._safe_send_text(
                 chat_id,
-                f"[卡片发送失败，降级为文本] {card.get('header', {}).get('title', {}).get('content', 'VibeBridge Message')}",
+                f"[卡片发送失败，降级为文本] {header}",
             )
             return None
 
@@ -264,14 +312,18 @@ class TaskOrchestrator:
         except Exception as e:
             print(f"[TaskOrchestrator] _update_card failed: {e}")
             # Fallback to text so user is not left hanging
-            header = card.get("header", {}).get("title", {}).get("content", "Update")
-            elements = card.get("elements", [])
+            header = "Update"
             text_body = ""
-            for el in elements:
-                txt = el.get("text", {}).get("content", "")
-                if txt:
-                    text_body = txt[:500]
-                    break
+            try:
+                header = card.get("header", {}).get("title", {}).get("content", header)
+                elements = card.get("elements", [])
+                for el in elements:
+                    txt = el.get("text", {}).get("content", "")
+                    if txt:
+                        text_body = txt[:500]
+                        break
+            except Exception:
+                pass
             await self._safe_send_text(
                 chat_id,
                 f"{header}\n{text_body}",

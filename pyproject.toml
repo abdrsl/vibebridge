@@ -57,6 +57,11 @@ Issues = "https://github.com/akliedrak/vibebridge/issues"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.pytest.ini_options]
+markers = [
+    "legacy: marks tests as legacy (slow, old architecture, may hang)",
+]
+
 [tool.ruff]
 line-length = 100
 target-version = "py310"

@@ -37,9 +37,14 @@ class FeishuAdapter(BaseIMAdapter):
             verify_feishu_webhook(raw_payload)
         except FeishuSecurityError as e:
             raise ValueError(f"Webhook verification failed: {e}") from e
+        except Exception as e:
+            raise ValueError(f"Webhook verification error: {e}") from e
 
         # Decrypt if needed
-        body = decrypt_feishu_payload(raw_payload)
+        try:
+            body = decrypt_feishu_payload(raw_payload)
+        except Exception as e:
+            raise ValueError(f"Payload decryption failed: {e}") from e
 
         # Parse schema v2 / v1
         schema = body.get("schema", "")
@@ -57,25 +62,30 @@ class FeishuAdapter(BaseIMAdapter):
         if event_type != "im.message.receive_v1":
             raise ValueError(f"Unhandled event type: {event_type}")
 
-        message = event.get("message", {})
-        sender = event.get("sender", {})
-        content_str = message.get("content", "{}")
+        message = event.get("message", {}) if isinstance(event.get("message"), dict) else {}
+        sender = event.get("sender", {}) if isinstance(event.get("sender"), dict) else {}
+        content_str = message.get("content", "{}") if isinstance(message.get("content"), str) else "{}"
 
-        # Deduplication
+        # Deduplication (swallow deduplicator errors so one bad message doesn't crash the service)
         message_id = message.get("message_id", "")
         if message_id:
-            from src.legacy.message_deduplicator import get_deduplicator
+            try:
+                from src.legacy.message_deduplicator import get_deduplicator
 
-            dedup = get_deduplicator()
-            if dedup.is_duplicate(message_id):
-                raise ValueError("Duplicate message")
+                dedup = get_deduplicator()
+                if dedup.is_duplicate(message_id):
+                    raise ValueError("Duplicate message")
+            except ValueError:
+                raise
+            except Exception as e:
+                print(f"[FeishuAdapter] Deduplicator error (proceeding anyway): {e}")
 
         try:
             content_obj = json.loads(content_str)
         except json.JSONDecodeError:
             content_obj = {}
 
-        text = content_obj.get("text", "").strip()
+        text = content_obj.get("text", "").strip() if isinstance(content_obj, dict) else ""
 
         # Clean @mentions
         text = re.sub(r"<at[^>]*>.*?</at>", "", text)
@@ -84,14 +94,28 @@ class FeishuAdapter(BaseIMAdapter):
 
         chat_type = message.get("chat_type", "")
         mentions = message.get("mentions", [])
+        if not isinstance(mentions, list):
+            mentions = []
         bot_mentioned = any(
             m.get("mentioned_type") == "bot" for m in mentions
         )
 
+        sender_id = "unknown"
+        try:
+            sender_id = sender.get("sender_id", {}).get("open_id", "unknown")
+        except Exception:
+            pass
+
+        chat_id = ""
+        try:
+            chat_id = message.get("chat_id", "")
+        except Exception:
+            pass
+
         return InboundMessage(
             message_id=message_id,
-            chat_id=message.get("chat_id", ""),
-            sender_id=sender.get("sender_id", {}).get("open_id", "unknown"),
+            chat_id=chat_id,
+            sender_id=sender_id,
             text=text,
             chat_type=chat_type,
             is_bot_mentioned=bot_mentioned,
@@ -99,25 +123,38 @@ class FeishuAdapter(BaseIMAdapter):
         )
 
     async def send_text(self, chat_id: str, text: str) -> bool:
-        try:
-            result = await self._client.send_text_message(chat_id, text)
-            return result is not None and "error" not in result
-        except Exception as e:
-            print(f"[FeishuAdapter] send_text failed: {e}")
-            return False
+        return await self._send_with_retry(
+            self._client.send_text_message, chat_id, text
+        )
 
     async def send_card(self, chat_id: str, card_type: str, context: dict) -> bool:
-        try:
-            result = await self._client.send_interactive_card(chat_id, context)
-            return result is not None and "error" not in result
-        except Exception as e:
-            print(f"[FeishuAdapter] send_card failed: {e}")
-            return False
+        return await self._send_with_retry(
+            self._client.send_interactive_card, chat_id, context
+        )
 
     async def upload_file(self, chat_id: str, file_path: str) -> bool:
-        try:
-            result = await self._client.upload_file(chat_id, file_path)
-            return result is not None and "error" not in result
-        except Exception as e:
-            print(f"[FeishuAdapter] upload_file failed: {e}")
-            return False
+        return await self._send_with_retry(
+            self._client.upload_file, chat_id, file_path
+        )
+
+    async def _send_with_retry(self, sender, chat_id: str, payload, max_retries: int = 2) -> bool:
+        """Send with token-clear retry on auth failures."""
+        last_error = None
+        for attempt in range(max_retries):
+            try:
+                result = await sender(chat_id, payload)
+                if result is not None and "error" not in result:
+                    return True
+                # If result indicates token failure, clear cache and retry
+                if isinstance(result, dict) and result.get("code") in (99991663, 99991664, 99991665, 10003):
+                    self._client.clear_token_cache()
+                    last_error = f"Token error {result.get('code')}"
+                    continue
+                last_error = result
+            except Exception as e:
+                last_error = e
+                err_str = str(e).lower()
+                if "token" in err_str or "auth" in err_str or "unauthorized" in err_str:
+                    self._client.clear_token_cache()
+        print(f"[FeishuAdapter] send failed after {max_retries} attempts: {last_error}")
+        return False

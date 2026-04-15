@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -21,8 +22,12 @@ async def lifespan(app: FastAPI):
     cfg = get_config()
     print(f"[VibeBridge] Config loaded from {cfg.config_dir}")
 
-    providers = build_providers(cfg.agents)
-    print(f"[VibeBridge] Providers loaded: {list(providers.keys())}")
+    try:
+        providers = build_providers(cfg.agents)
+        print(f"[VibeBridge] Providers loaded: {list(providers.keys())}")
+    except Exception as e:
+        print(f"[VibeBridge] WARNING: Some providers failed to load: {e}")
+        providers = {}
 
     router = ProviderRouter(cfg.agents, providers)
     im_adapter = FeishuAdapter(cfg.feishu)
@@ -62,7 +67,20 @@ def root():
 @app.get("/health")
 async def health(request: Request):
     orchestrator: TaskOrchestrator = request.app.state.orchestrator
-    health = await orchestrator.router.health_table()
+    # Each provider health check gets its own 10s timeout so a single hanging provider
+    # doesn't block the entire /health endpoint.
+    try:
+        health = await asyncio.wait_for(
+            orchestrator.router.health_table(),
+            timeout=15.0,
+        )
+    except Exception as e:
+        return {
+            "ok": False,
+            "timestamp": __import__("time").time(),
+            "error": str(e),
+            "providers": {},
+        }
     return {
         "ok": True,
         "timestamp": __import__("time").time(),
@@ -72,7 +90,16 @@ async def health(request: Request):
 
 @app.get("/system/status")
 async def system_status(request: Request):
-    health = await request.app.state.router.health_table()
+    try:
+        health = await asyncio.wait_for(
+            request.app.state.router.health_table(),
+            timeout=15.0,
+        )
+    except Exception as e:
+        return {
+            "error": str(e),
+            "config_file": str(request.app.state.cfg.config_file),
+        }
     return {
         "providers": {
             k: {"healthy": v[0], "message": v[1]} for k, v in health.items()
@@ -84,7 +111,14 @@ async def system_status(request: Request):
 @app.post("/im/feishu/webhook")
 async def feishu_webhook(request: Request):
     """New unified Feishu webhook endpoint."""
-    body = await request.json()
+    try:
+        body = await request.json()
+    except Exception as e:
+        return {
+            "ok": True,
+            "status": "error",
+            "reason": f"Invalid JSON body: {e}",
+        }
 
     # Handle URL verification challenge
     if "challenge" in body:
@@ -98,6 +132,8 @@ async def feishu_webhook(request: Request):
     except ValueError as e:
         # Common for duplicates or unhandled events
         return {"ok": True, "skipped": True, "reason": str(e)}
+    except Exception as e:
+        return {"ok": True, "skipped": True, "reason": f"Parse error: {e}"}
 
     # Group messages must @bot
     if message.chat_type == "group" and not message.is_bot_mentioned:
