@@ -682,8 +682,8 @@ async def run_opencode_with_session(
         phase, progress = estimate_phase_and_progress()
         thought_summary = extract_thought_summary()
 
-        # 最近输出（最近30行）
-        recent_output_lines = output_lines[-30:] if len(output_lines) >= 30 else output_lines
+        # 最近输出（最近400行）
+        recent_output_lines = output_lines[-400:] if len(output_lines) >= 400 else output_lines
         recent_output = "\n".join(recent_output_lines)
 
         # 尝试使用卡片更新（首选）
@@ -743,7 +743,7 @@ async def run_opencode_with_session(
 
         # 卡片更新失败，回退到文本消息更新
         # 构建文本消息内容
-        display_lines = output_lines[-30:] if len(output_lines) > 30 else output_lines
+        display_lines = output_lines[-400:] if len(output_lines) > 400 else output_lines
         message_content = "## 🔨 OpenCode 任务执行中\n\n"
         message_content += f"**任务ID:** `{task_id}`\n"
         message_content += f"**当前阶段:** {phase} ({progress}%)\n\n"
