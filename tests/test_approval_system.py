@@ -24,7 +24,7 @@ async def test_approval_system():
     # 1. 创建审批请求
     print("\n1. 创建审批请求...")
     request = approval_manager.create_approval(
-        user_id="ou_REDACTED_OPEN_ID",
+        user_id="ou_xxxxxxxxxxxxxxxx",
         command="git push origin main",
         description="提交代码到主分支",
         risk_level="high",
@@ -55,7 +55,7 @@ async def test_approval_system():
     print("\n5. 模拟审批通过...")
     approved = approval_manager.approve(
         request.approval_id,
-        "ou_REDACTED_OPEN_ID",
+        "ou_xxxxxxxxxxxxxxxx",
         "测试批准"
     )
     print(f"   ✅ 审批完成: {approved.status.value}")
