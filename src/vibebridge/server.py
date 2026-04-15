@@ -48,7 +48,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="VibeBridge",
-    version="0.2.0",
+    version="1.1.0",
     description="Universal IM gateway for local AI coding agents",
     lifespan=lifespan,
 )
@@ -58,7 +58,7 @@ app = FastAPI(
 def root():
     return {
         "name": "VibeBridge",
-        "version": "0.2.0",
+        "version": "1.1.0",
         "status": "ok",
     }
 
