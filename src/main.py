@@ -20,8 +20,8 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-# Approval system integration - 审核机器人C
-from src.approval import register_approval_routes
+# Approval system integration - 审核机器人C (已禁用)
+# from src.approval import register_approval_routes
 from src.legacy.feishu_card_handler import process_feishu_webhook
 
 # Legacy imports for compatibility (will be migrated to agents)
@@ -45,8 +45,8 @@ from src.legacy.task_store import get_task, list_tasks, save_task, update_task
 # Multi-agent system
 from src.system import get_system, start_multi_agent_system, stop_multi_agent_system
 
-APPROVAL_SYSTEM_ENABLED = True
-print("✅ Approval system (机器人C) loaded")
+APPROVAL_SYSTEM_ENABLED = False  # 已禁用
+# print("✅ Approval system (机器人C) loaded")  # 已禁用
 
 # WebSocket 长连接支持
 FEISHU_WEBSOCKET_AVAILABLE = False
@@ -334,9 +334,7 @@ async def create_opencode_task(
         feishu_message_id=payload.feishu_message_id,
     )
 
-    background_tasks.add_task(
-        run_opencode_with_feishu, task_id, payload.notify_on_complete
-    )
+    background_tasks.add_task(run_opencode_with_feishu, task_id, payload.notify_on_complete)
 
     return {
         "ok": True,
@@ -360,9 +358,7 @@ async def run_opencode_with_feishu(task_id: str, notify: bool = True):
         if notify and task.feishu_chat_id:
             print(f"[OpenCode] Sending start card to {task.feishu_chat_id}")
             start_card = build_start_card(task_id, task.user_message)
-            result = await feishu_client.send_interactive_card(
-                task.feishu_chat_id, start_card
-            )
+            result = await feishu_client.send_interactive_card(task.feishu_chat_id, start_card)
             print(f"[OpenCode] Start card result: {result}")
 
         # Collect events
@@ -399,12 +395,8 @@ async def run_opencode_with_feishu(task_id: str, notify: bool = True):
                 and current_time - last_progress_time > PROGRESS_INTERVAL
             ):
                 # Fallback if latest_output empty
-                display_output = (
-                    latest_output if latest_output else "OpenCode 正在处理..."
-                )
-                progress_card = build_progress_card(
-                    task_id, "running", display_output, tool_count
-                )
+                display_output = latest_output if latest_output else "OpenCode 正在处理..."
+                progress_card = build_progress_card(task_id, "running", display_output, tool_count)
                 result = await feishu_client.send_interactive_card(
                     task.feishu_chat_id, progress_card
                 )
@@ -417,22 +409,16 @@ async def run_opencode_with_feishu(task_id: str, notify: bool = True):
                 f"[OpenCode] Sending result to Feishu, final_result={final_result is not None}, error_result={error_result is not None}"
             )
             if final_result:
-                print(
-                    f"[OpenCode] Building result card with content length: {len(final_result)}"
-                )
+                print(f"[OpenCode] Building result card with content length: {len(final_result)}")
                 final_card = build_result_card(
                     task_id, task.user_message, task.output_lines, final_result
                 )
-                result = await feishu_client.send_interactive_card(
-                    task.feishu_chat_id, final_card
-                )
+                result = await feishu_client.send_interactive_card(task.feishu_chat_id, final_card)
                 print(f"[OpenCode] Result card sent: {result}")
             elif error_result:
                 print(f"[OpenCode] Building error card with error: {error_result}")
                 card = build_error_card(task_id, error_result)
-                result = await feishu_client.send_interactive_card(
-                    task.feishu_chat_id, card
-                )
+                result = await feishu_client.send_interactive_card(task.feishu_chat_id, card)
                 print(f"[OpenCode] Error card sent: {result}")
             else:
                 print("[OpenCode] No result or error to send")
@@ -469,9 +455,7 @@ async def get_opencode_task(request: Request, task_id: str):
             "created_at": task.created_at.isoformat(),
             "updated_at": task.updated_at.isoformat(),
             "output_count": len(task.output_lines),
-            "output_preview": "\n".join(task.output_lines[-10:])
-            if task.output_lines
-            else None,
+            "output_preview": "\n".join(task.output_lines[-10:]) if task.output_lines else None,
             "final_result": task.final_result,
             "error": task.error,
             "feishu_chat_id": task.feishu_chat_id,
@@ -583,11 +567,11 @@ except Exception as e:
 # ============================================
 # Approval System Routes (机器人C)
 # ============================================
-try:
-    register_approval_routes(app)
-    print("✅ Approval routes registered (机器人C)")
-except Exception as e:
-    print(f"⚠️ Approval routes registration failed: {e}")
+# try:
+#     register_approval_routes(app)
+#     print("✅ Approval routes registered (机器人C)")
+# except Exception as e:
+#     print(f"⚠️ Approval routes registration failed: {e}")
 
 
 # ============================================

@@ -112,9 +112,7 @@ class OpenCodeProvider(BaseProvider):
                     f"Cannot create workdir {workdir} or fallback {self._default_workdir}: {e2}"
                 ) from e2
 
-        task_id = (
-            f"oc_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{session_id[-8:]}"
-        )
+        task_id = f"oc_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{session_id[-8:]}"
         task = OpenCodeTask(
             task_id=task_id,
             user_message=prompt,
@@ -150,6 +148,7 @@ class OpenCodeProvider(BaseProvider):
                 "json",
                 "--model",
                 self.model,
+                "--dangerously-skip-permissions",  # 自动批准权限，避免手动确认
                 "--title",
                 f"VibeBridge Task {task_id}",
                 task.user_message,
@@ -180,9 +179,7 @@ class OpenCodeProvider(BaseProvider):
                     raise asyncio.TimeoutError("Total execution time exceeded 1200s")
 
                 try:
-                    chunk = await asyncio.wait_for(
-                        stdout.read(1024), timeout=min(60.0, remaining)
-                    )
+                    chunk = await asyncio.wait_for(stdout.read(1024), timeout=min(60.0, remaining))
                     if not chunk:
                         break
                     buffer += chunk.decode("utf-8", errors="replace")
@@ -242,9 +239,7 @@ class OpenCodeProvider(BaseProvider):
                             elif event_type == "done":
                                 final_content = event.get("content", {})
                                 if isinstance(final_content, dict):
-                                    final_text = final_content.get(
-                                        "text", str(final_content)
-                                    )
+                                    final_text = final_content.get("text", str(final_content))
                                 else:
                                     final_text = str(final_content)
                                 final_result = final_text
@@ -293,10 +288,7 @@ class OpenCodeProvider(BaseProvider):
                             task_id=task_id,
                         )
                     else:
-                        error_msg = (
-                            task.error
-                            or f"OpenCode exited with code {process.returncode}"
-                        )
+                        error_msg = task.error or f"OpenCode exited with code {process.returncode}"
                         await self._update_task(
                             task_id,
                             status=TaskStatus.FAILED,
@@ -308,9 +300,7 @@ class OpenCodeProvider(BaseProvider):
                             task_id=task_id,
                         )
             else:
-                error_msg = (
-                    task.error or f"OpenCode exited with code {process.returncode}"
-                )
+                error_msg = task.error or f"OpenCode exited with code {process.returncode}"
                 await self._update_task(
                     task_id,
                     status=TaskStatus.FAILED,

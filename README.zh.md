@@ -14,7 +14,7 @@
 - **手机远程写代码**：在地铁上@机器人让它帮你写脚本。
 - **团队协作**：产品经理、设计师直接在飞书群里提需求，AI 自动执行并回传结果截图。
 - **多工具自由切换**：用 `/kimi`、`/claude`、`/openc` 前缀随时切换底层 Agent。
-- **审批安全闸门**：内置基于规则的风险审批系统，高风险命令需人工确认后才执行。
+- **权限口令控制**：在消息中包含秘密口令可授予敏感操作的最高权限。
 - **一键部署**：支持 systemd 自启动、Docker、一键安装脚本。
 
 ---
@@ -78,7 +78,7 @@ vibebridge start --install
       ↓
 FeishuAdapter (Webhook / WebSocket)
       ↓
-会话管理 + 审批引擎
+会话管理
       ↓
 Provider Router
       ↓
@@ -118,25 +118,21 @@ Provider Router
 
 ---
 
-## 🛡️ 审批系统
+## 🛡️ 权限与安全
 
-VibeBridge 内置轻量级审批规则，防止误操作：
+VibeBridge 提供多层安全机制防止误操作：
 
-```yaml
-approval:
-  enabled: true
-  rules:
-    - provider: "*"
-      pattern: "rm\s+-rf|drop\s+table"
-      level: critical
-    - provider: "*"
-      pattern: "git\s+push|deploy"
-      level: high
-```
+### 权限口令系统
+- **默认模式**：所有命令经过宪法检查，防止破坏性操作。
+- **提升权限**：在消息中包含秘密口令可跳过安全检查，获得最高权限。
+- **环境变量**：设置 `FEISHU_PERMIT_PASSWORD` 定义您的授权口令。
 
-- **low**: 自动执行
-- **medium**: 通知但允许
-- **high / critical**: 发送审批卡片到飞书，需人工点击"批准"后才执行
+### 安全特性
+- **宪法检查**：默认启用 OpenCode 内置安全规则。
+- **WebSocket 模式优化**：实时进度卡片显示最多400行输出。
+- **输出过滤**：工具调用行和中间步骤从最终结果中过滤。
+- **表格渲染**：输出中的 Markdown 表格自动在飞书卡片中渲染。
+- **实时进度**：WebSocket 模式下显示详细执行过程，关闭确认卡片。
 
 ---
 

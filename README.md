@@ -14,7 +14,7 @@ Deploy an AI coding agent to your team chat in 60 seconds. VibeBridge connects *
 - **Remote coding from your phone**: `@VibeBridge write a Python script to backup my DB` while you're on the subway.
 - **Team collaboration**: Product managers and designers can request simple changes in a Feishu group, and the agent executes them automatically.
 - **Multi-tool freedom**: Switch between OpenCode, Kimi, Claude, or OpenClaw with a simple command prefix (`/kimi`, `/claude`, `/openc`).
-- **Approval gate for risky ops**: Built-in rule-based approval system prevents destructive commands from running without human consent.
+- **Permission control with passphrase**: Use a secret passphrase in messages to grant elevated permissions for sensitive operations.
 
 ---
 
@@ -78,7 +78,7 @@ Feishu Message
       ↓
 FeishuAdapter (webhook / websocket)
       ↓
-Session Manager + Approval Engine
+Session Manager
       ↓
 Provider Router
       ↓
@@ -92,7 +92,7 @@ Streaming result cards back to Feishu
 
 - **Providers**: Pluggable adapters for each local AI coding tool.
 - **IM Adapters**: Currently Feishu (Lark). Slack / Discord adapters can be added by implementing `BaseIMAdapter`.
-- **Approval Engine**: Regex-based risk rules. High/critical commands trigger an interactive approval card before execution.
+- **Permission passphrase**: Messages containing a secret passphrase bypass security checks for elevated permissions.
 
 ---
 
@@ -153,13 +153,20 @@ Environment variables are automatically loaded from `.env` in the working direct
 
 ---
 
-## 🛡️ Security & Approval
+## 🛡️ Security & Permissions
 
-VibeBridge includes a lightweight approval system to prevent accidental damage:
+VibeBridge provides multiple security layers to prevent accidental damage:
 
-- **Low risk**: Auto-execute (e.g., `write a script`).
-- **Medium risk**: Notify but allow (e.g., `install a package`).
-- **High / Critical risk**: Pause execution and send an approval card to Feishu. The command only runs after a human clicks **Approve**.
+### Permission Passphrase System
+- **Default mode**: All commands go through constitution checks to prevent destructive operations.
+- **Elevated permissions**: Include a secret passphrase in your message to bypass security checks for sensitive operations.
+- **Environment variable**: Set `FEISHU_PERMIT_PASSWORD` to define your passphrase.
+
+### Security Features
+- **Constitution checks**: OpenCode's built-in safety rules are applied by default.
+- **WebSocket mode optimizations**: Real-time progress cards show up to 400 lines of output.
+- **Clean output filtering**: Tool call lines and intermediate steps are filtered from final results.
+- **Table rendering**: Markdown tables in output are automatically rendered in Feishu cards.
 
 ---
 

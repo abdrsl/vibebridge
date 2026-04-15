@@ -27,22 +27,22 @@ FEISHU_BOT_B:
 # 审批服务器配置
 # ============================================
 
-APPROVAL_SERVER:
-  host: "0.0.0.0"
-  port: 8000
-  
-  # WebSocket 端点
-  ws_endpoint: "/ws/approval"
-  
-  # HTTP API 端点
-  api_prefix: "/api/approval"
-  webhook_endpoint: "/webhook/feishu"
-  
-  # 超时设置
-  approval_timeout: 3600  # 秒
-  
-  # 通知模式: webhook | terminal | auto
-  notify_mode: "webhook"
+# APPROVAL_SERVER: (已禁用 - Approval C 机器人已移除)
+#   host: "0.0.0.0"
+#   port: 8000
+#   
+#   # WebSocket 端点
+#   ws_endpoint: "/ws/approval"
+#   
+#   # HTTP API 端点
+#   api_prefix: "/api/approval"
+#   webhook_endpoint: "/webhook/feishu"
+#   
+#   # 超时设置
+#   approval_timeout: 3600  # 秒
+#   
+#   # 通知模式: webhook | terminal | auto
+#   notify_mode: "webhook"
 
 # ============================================
 # OpenClaw 集成配置
@@ -54,7 +54,7 @@ OPENCLAW_INTEGRATION:
   # WebSocket 连接
   websocket:
     enabled: true
-    endpoint: "/ws/approval"
+    endpoint: "/ws/opencodes"  # 原 "/ws/approval" (已更改)
     heartbeat_interval: 30  # 秒
   
   # 白名单用户
@@ -80,7 +80,7 @@ OPENCLAW_INTEGRATION:
       notify: true
       timeout: 7200
       require_reason: true
-      require_secondary_approval: true
+      # require_secondary_approval: true  # (已禁用 - Approval C 机器人已移除)
 
 # ============================================
 # OpenCode 集成配置
@@ -92,7 +92,7 @@ OPENCODE_INTEGRATION:
   # HTTP API
   http_api:
     enabled: true
-    prefix: "/api/approval"
+    prefix: "/api/opencode"  # 原 "/api/approval" (已更改)
     auth_required: true
     api_key: "${OPENCODE_API_KEY}"
   
@@ -116,7 +116,7 @@ LOGGING:
       enabled: true
     file:
       enabled: true
-      path: "logs/approval.log"
+      path: "logs/server.log"  # 原 "logs/approval.log" (已更改)
       max_size: "10MB"
       backup_count: 5
 
@@ -129,12 +129,12 @@ DATABASE:
   type: "sqlite"  # sqlite | postgresql
   
   sqlite:
-    path: "data/approvals.db"
+    path: "data/vibebridge.db"  # 原 "data/approvals.db" (已更改)
   
   postgresql:
     host: "localhost"
     port: 5432
-    database: "approvals"
+    database: "vibebridge"  # 原 "approvals" (已更改)
     username: "${DB_USER}"
     password: "${DB_PASSWORD}"
 

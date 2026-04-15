@@ -51,9 +51,7 @@ class FeishuClient:
         """带重试的HTTP请求"""
         async with httpx.AsyncClient() as client:
             if method.upper() == "POST":
-                resp = await client.post(
-                    url, headers=headers, json=payload, timeout=30.0, **kwargs
-                )
+                resp = await client.post(url, headers=headers, json=payload, timeout=30.0, **kwargs)
             elif method.upper() == "GET":
                 resp = await client.get(url, headers=headers, timeout=30.0, **kwargs)
             elif method.upper() == "PATCH":
@@ -78,9 +76,7 @@ class FeishuClient:
                     99991665,
                 ]  # 常见token失效错误码
                 if error_code in token_invalid_codes:
-                    print(
-                        f"[Feishu] Token invalid error detected ({error_code}), clearing cache"
-                    )
+                    print(f"[Feishu] Token invalid error detected ({error_code}), clearing cache")
                     self.clear_token_cache()
                     # 抛出异常让重试机制重新获取token
                     raise Exception(f"Feishu token invalid: {error_msg}")
@@ -138,7 +134,9 @@ class FeishuClient:
         if not receive_id:
             receive_id = self.default_chat_id
         if not receive_id:
-            print(f"[Feishu] Error: No receive_id provided for text message (type: {receive_id_type})")
+            print(
+                f"[Feishu] Error: No receive_id provided for text message (type: {receive_id_type})"
+            )
             return {"error": "No receive_id provided"}
 
         print(
@@ -171,9 +169,7 @@ class FeishuClient:
             print(f"[Feishu] Error sending text message: {e}")
             return {"error": str(e)}
 
-    async def update_text_message(
-        self, message_id: str, text: str
-    ) -> dict[str, Any] | None:
+    async def update_text_message(self, message_id: str, text: str) -> dict[str, Any] | None:
         """更新已有的文本消息
 
         Args:
@@ -183,9 +179,7 @@ class FeishuClient:
         Returns:
             更新结果，格式: {"code": 0, "data": {...}} 或 {"code": -1, "error": "..."}
         """
-        print(
-            f"[Feishu] Updating text message {message_id[:10]}..., length: {len(text)}"
-        )
+        print(f"[Feishu] Updating text message {message_id[:10]}..., length: {len(text)}")
         print(f"[Feishu] Message preview: {text[:100]}...")
 
         token = await self.get_tenant_access_token()
@@ -424,9 +418,7 @@ class FeishuClient:
             return {"error": "Upload failed"}
 
         file_key = upload_result.get("file_key")
-        actual_file_name = upload_result.get(
-            "file_name", file_name or Path(file_path).name
-        )
+        actual_file_name = upload_result.get("file_name", file_name or Path(file_path).name)
 
         if not file_key:
             return {"error": "No file key returned from upload"}
@@ -536,22 +528,16 @@ def build_start_card(task_id: str, user_message: str) -> dict:
     }
 
 
-def build_progress_card(
-    task_id: str, status: str, latest_output: str, tool_count: int = 0
-) -> dict:
+def build_progress_card(task_id: str, status: str, latest_output: str, tool_count: int = 0) -> dict:
     status_config = {
         "pending": {"emoji": "⏳", "template": "grey", "text": "等待中"},
         "running": {"emoji": "🔄", "template": "blue", "text": "执行中"},
         "completed": {"emoji": "✅", "template": "green", "text": "已完成"},
         "failed": {"emoji": "❌", "template": "red", "text": "失败"},
     }
-    config = status_config.get(
-        status, {"emoji": "📋", "template": "grey", "text": status}
-    )
+    config = status_config.get(status, {"emoji": "📋", "template": "grey", "text": status})
 
-    truncated_output = (
-        latest_output[:1500] if len(latest_output) > 1500 else latest_output
-    )
+    truncated_output = latest_output[:1500] if len(latest_output) > 1500 else latest_output
     if len(latest_output) > 1500:
         truncated_output += "\n\n📝 *(输出过长已截断，完整结果请查看终端或日志)*"
 
@@ -855,9 +841,7 @@ def build_session_status_card(
         "cancelled": {"emoji": "🚫", "template": "grey", "text": "已取消"},
     }
 
-    config = status_config.get(
-        status, {"emoji": "📋", "template": "grey", "text": status}
-    )
+    config = status_config.get(status, {"emoji": "📋", "template": "grey", "text": status})
 
     elements = [
         {
@@ -1007,9 +991,7 @@ def build_dynamic_progress_card(
         "summarizing": {"emoji": "📝", "name": "整理结果", "color": "teal"},
     }
 
-    phase_info = phase_config.get(
-        phase, {"emoji": "🔄", "name": phase, "color": "blue"}
-    )
+    phase_info = phase_config.get(phase, {"emoji": "🔄", "name": phase, "color": "blue"})
 
     # 状态配置
     status_config = {
@@ -1018,9 +1000,7 @@ def build_dynamic_progress_card(
         "completed": {"emoji": "✅", "template": "green", "text": "已完成"},
         "failed": {"emoji": "❌", "template": "red", "text": "失败"},
     }
-    status_info = status_config.get(
-        status, {"emoji": "📋", "template": "grey", "text": status}
-    )
+    status_info = status_config.get(status, {"emoji": "📋", "template": "grey", "text": status})
 
     # 构建卡片元素
     elements = []
@@ -1066,13 +1046,11 @@ def build_dynamic_progress_card(
 
     # 最近输出（如果有）
     if recent_output:
-        truncated_output = (
-            recent_output[:1200] if len(recent_output) > 1200 else recent_output
-        )
+        truncated_output = recent_output[:3000] if len(recent_output) > 3000 else recent_output
         elements.append(
             {
                 "tag": "markdown",
-                "content": f"**📤 最近输出:**\n```\n{truncated_output}\n```{'...(已截断，完整结果请查看终端或日志)' if len(recent_output) > 1200 else ''}",
+                "content": f"**📤 最近输出:**\n```\n{truncated_output}\n```{'...(已截断，完整结果请查看终端或日志)' if len(recent_output) > 3000 else ''}",
             }
         )
 

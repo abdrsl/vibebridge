@@ -232,6 +232,7 @@ class TaskStatus(str, Enum):
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 @dataclass
@@ -357,6 +358,7 @@ class OpenCodeManager:
                 "json",
                 "--model",
                 "deepseek/deepseek-chat",
+                "--dangerously-skip-permissions",  # 自动批准权限，避免手动确认
                 "--title",
                 f"Feishu Task {task_id}",
                 task.user_message,

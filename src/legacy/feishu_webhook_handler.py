@@ -933,8 +933,8 @@ async def run_opencode_with_session(
                                 result_display = final_result
                         else:
                             # 普通文本，放在代码块中
-                            if len(final_result) > 1200:
-                                result_display = f"```\n{final_result[:1000]}...\n```\n*完整结果共 {len(final_result)} 字符*"
+                            if len(final_result) > 3000:
+                                result_display = f"```\n{final_result[:2500]}...\n```\n*完整结果共 {len(final_result)} 字符*"
                             else:
                                 result_display = f"```\n{final_result}\n```"
                     else:
