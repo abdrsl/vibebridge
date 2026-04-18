@@ -25,7 +25,7 @@ class FeishuConfig(BaseModel):
 class OpenCodeProviderConfig(BaseModel):
     enabled: bool = True
     binary: str = "auto"
-    model: str = "deepseek/deepseek-chat"
+    model: str = "deepseek/deepseek-reasoner"
     default_workdir: str = "~/workspace"
 
 

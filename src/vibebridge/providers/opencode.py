@@ -44,7 +44,7 @@ class OpenCodeProvider(BaseProvider):
     def __init__(
         self,
         binary: str | None = None,
-        model: str = "deepseek/deepseek-chat",
+        model: str = "deepseek/deepseek-reasoner",
         default_workdir: str = "~/workspace",
     ):
         self.binary = binary or self._auto_detect_binary()

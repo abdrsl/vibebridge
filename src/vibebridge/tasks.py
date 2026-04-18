@@ -7,10 +7,12 @@ import os
 import re
 from pathlib import Path
 
+from .approval import ApprovalManager, ApprovalAction, ApprovalStatus
 from .cards.error import render_error_card
 from .cards.progress import render_progress_card
 from .cards.result import render_result_card
 from .cards.start import render_start_card
+from .history import get_history_manager
 from .im.base import BaseIMAdapter, InboundMessage
 from .providers.base import BaseProvider, StreamEventType
 from .router import ProviderRouter
@@ -47,13 +49,35 @@ class TaskOrchestrator:
         self.router = router
         self.im = im_adapter
         self.sessions = session_manager
+        self.history_manager = get_history_manager()
         self.approval = approval_engine
+        self.approval_manager = ApprovalManager(im_adapter)
         self._active_cards: dict[str, str] = {}  # task_id -> message_id
         self._task_timeout_seconds = 1800  # 30 minutes max per task
         self._running_tasks: set[asyncio.Task] = set()
+        self._pending_tasks: dict[str, dict] = {}  # task_id -> task_info
 
     async def handle_message(self, message: InboundMessage) -> dict:
         """Main entry point for incoming IM messages."""
+        
+        # 检查是否是审批命令
+        if message.text.strip().startswith("/approve"):
+            result = await self.approval_manager.handle_approval_command(
+                message.text, message.sender_id, message.chat_id
+            )
+            await self._safe_send_text(message.chat_id, result)
+            
+            # 如果审批通过，检查是否有待处理的任务
+            if "已批准" in result:
+                # 提取请求ID
+                import re
+                match = re.search(r'请求 `([a-f0-9]+)`', result)
+                if match:
+                    request_id = match.group(1)
+                    await self._process_approved_task(request_id)
+            
+            return {"status": "command_processed", "command": "approve"}
+        
         try:
             provider, prompt = self.router.resolve(message.text)
         except RuntimeError as e:
@@ -81,15 +105,45 @@ class TaskOrchestrator:
         if self.approval and self.approval.config.enabled:
             risk = self.approval.evaluate(provider.name, prompt)
             if risk.level in ("high", "critical"):
-                await self._safe_send_text(
-                    message.chat_id,
-                    f"⏸️ 该命令被标记为 **{risk.level}** 风险，已提交审批。"
-                    f"请等待管理员在飞书中批准。\n\n命令: `{prompt[:200]}`",
+                # 创建审批请求
+                request_id, success = await self.approval_manager.create_approval_request(
+                    task_id="",  # 暂时为空，等审批通过后创建任务
+                    provider=provider.name,
+                    prompt=prompt,
+                    risk_level=risk.level,
+                    chat_id=message.chat_id,
+                    sender_id=message.sender_id,
                 )
-                return {
-                    "status": "pending_approval",
-                    "risk_level": risk.level,
-                }
+                
+                if success:
+                    # 保存待处理任务信息
+                    self._pending_tasks[request_id] = {
+                        "provider": provider,
+                        "prompt": prompt,
+                        "message": message,
+                        "workdir": provider.default_workdir() if hasattr(provider, 'default_workdir') else str(Path.home() / "workspace"),
+                    }
+                    
+                    await self._safe_send_text(
+                        message.chat_id,
+                        f"⏸️ 该命令被标记为 **{risk.level}** 风险，已提交审批。\n"
+                        f"**请求ID:** `{request_id}`\n"
+                        f"请等待管理员在飞书中批准。\n\n命令: `{prompt[:200]}`",
+                    )
+                    return {
+                        "status": "pending_approval",
+                        "request_id": request_id,
+                        "risk_level": risk.level,
+                    }
+                else:
+                    await self._safe_send_text(
+                        message.chat_id,
+                        f"❌ 审批请求创建失败，命令无法执行。",
+                    )
+                    return {
+                        "status": "error",
+                        "reason": "审批请求创建失败",
+                    }
 
         # Resolve workdir safely
         try:
@@ -108,16 +162,49 @@ class TaskOrchestrator:
             )
             session.add_message("user", prompt)
             self.sessions.save(session)
+            
+            # 添加消息到历史记录
+            self.history_manager.add_message(
+                session_id=session.session_id,
+                user_id=message.sender_id,
+                chat_id=message.chat_id,
+                role="user",
+                content=prompt,
+                metadata={
+                    "provider": provider.name,
+                    "task_type": "user_query"
+                },
+                provider=provider.name
+            )
         except Exception as e:
             await self._safe_send_text(
                 message.chat_id, f"❌ Session error: {e}"
             )
             return {"status": "error", "reason": f"session error: {e}"}
 
-        # Create task
+        # Create task with history context
         try:
+            # 获取历史上下文
+            history_context = self.history_manager.get_context(
+                session_id=session.session_id,
+                max_entries=10,
+                max_tokens=2000
+            )
+            
+            # 构建包含历史上下文的提示
+            enhanced_prompt = prompt
+            if history_context:
+                enhanced_prompt = f"""以下是本次对话的历史上下文：
+
+{history_context}
+
+当前问题：
+{prompt}
+
+请基于以上历史上下文回答当前问题。"""
+            
             task_id = await provider.create_task(
-                prompt=prompt,
+                prompt=enhanced_prompt,
                 workdir=session.workdir,
                 session_id=session.session_id,
                 chat_id=message.chat_id,
@@ -146,6 +233,109 @@ class TaskOrchestrator:
         task_handle.add_done_callback(self._log_task_exception)
 
         return {"status": "accepted", "task_id": task_id}
+    
+    async def _process_approved_task(self, request_id: str):
+        """处理已批准的任务"""
+        if request_id not in self._pending_tasks:
+            return
+        
+        task_info = self._pending_tasks.pop(request_id)
+        provider = task_info["provider"]
+        prompt = task_info["prompt"]
+        message = task_info["message"]
+        workdir = task_info["workdir"]
+        
+        # 获取审批请求详情
+        approval_request = self.approval_manager.get_request(request_id)
+        if not approval_request or approval_request.action == ApprovalAction.DENY:
+            return
+        
+        # 创建会话
+        try:
+            session = self.sessions.get_or_create(
+                user_id=message.sender_id,
+                chat_id=message.chat_id,
+                provider=provider.name,
+                workdir=workdir,
+            )
+            session.add_message("user", prompt)
+            self.sessions.save(session)
+            
+            # 添加消息到历史记录
+            self.history_manager.add_message(
+                session_id=session.session_id,
+                user_id=message.sender_id,
+                chat_id=message.chat_id,
+                role="user",
+                content=prompt,
+                metadata={
+                    "provider": provider.name,
+                    "task_type": "user_query",
+                    "approval_request_id": request_id
+                },
+                provider=provider.name
+            )
+        except Exception as e:
+            await self._safe_send_text(
+                message.chat_id, f"❌ 会话创建失败: {e}"
+            )
+            return
+        
+        # 创建任务（包含历史上下文）
+        try:
+            # 获取历史上下文
+            history_context = self.history_manager.get_context(
+                session_id=session.session_id,
+                max_entries=10,
+                max_tokens=2000
+            )
+            
+            # 构建包含历史上下文的提示
+            enhanced_prompt = prompt
+            if history_context:
+                enhanced_prompt = f"""以下是本次对话的历史上下文：
+
+{history_context}
+
+当前问题：
+{prompt}
+
+请基于以上历史上下文回答当前问题。"""
+            
+            task_id = await provider.create_task(
+                prompt=enhanced_prompt,
+                workdir=session.workdir,
+                session_id=session.session_id,
+                chat_id=message.chat_id,
+            )
+        except Exception as e:
+            await self._safe_send_text(
+                message.chat_id,
+                f"❌ 任务创建失败: {e}",
+            )
+            return
+        
+        # 发送开始卡片
+        try:
+            start_card = render_start_card(task_id, provider.display_name, prompt)
+            start_msg_id = await self._send_card(message.chat_id, start_card)
+            if start_msg_id:
+                self._active_cards[task_id] = start_msg_id
+        except Exception as e:
+            print(f"[TaskOrchestrator] 发送开始卡片失败: {e}")
+        
+        # 在后台运行任务
+        task_coro = self._run_task_stream(message.chat_id, provider, task_id, session)
+        task_handle = asyncio.create_task(task_coro)
+        self._running_tasks.add(task_handle)
+        task_handle.add_done_callback(self._running_tasks.discard)
+        task_handle.add_done_callback(self._log_task_exception)
+        
+        # 通知用户任务已开始
+        await self._safe_send_text(
+            message.chat_id,
+            f"✅ 审批通过，任务 `{task_id}` 已开始执行。",
+        )
 
     def _log_task_exception(self, task: asyncio.Task) -> None:
         """Log exceptions from background tasks to prevent 'never retrieved' warnings."""
@@ -264,6 +454,21 @@ class TaskOrchestrator:
         try:
             session.add_message("assistant", result_text)
             self.sessions.save(session)
+            
+            # 添加助手回复到历史记录
+            self.history_manager.add_message(
+                session_id=session.session_id,
+                user_id=session.user_id,
+                chat_id=session.chat_id,
+                role="assistant",
+                content=result_text,
+                metadata={
+                    "provider": provider.name,
+                    "task_id": task_id,
+                    "task_type": "assistant_response"
+                },
+                provider=provider.name
+            )
         except Exception as e:
             print(f"[TaskOrchestrator] session save error: {e}")
 

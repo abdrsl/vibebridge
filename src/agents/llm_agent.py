@@ -137,7 +137,7 @@ class LLMAgent(Agent):
                     "Content-Type": "application/json",
                 }
                 data = {
-                    "model": "deepseek-chat",
+                    "model": "deepseek-reasoner",
                     "messages": [{"role": "user", "content": prompt}],
                     "temperature": message.payload.get("temperature", 0.7),
                     "max_tokens": message.payload.get("max_tokens", 1000),
@@ -155,7 +155,7 @@ class LLMAgent(Agent):
                         recipient=message.sender,
                         request_id=message.payload.get("request_id"),
                         response=content,
-                        model="deepseek-chat",
+                        model="deepseek-reasoner",
                         tokens_used=result.get("usage", {}).get("total_tokens", 0),
                     )
             else:

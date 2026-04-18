@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vibebridge"
-version = "0.2.0"
+version = "1.1.0"
 description = "The missing IM gateway for local AI coding agents"
 readme = "README.md"
 license = {text = "MIT"}

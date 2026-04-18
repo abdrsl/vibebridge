@@ -508,6 +508,49 @@ async def start_opencode_task(
 
     check_constitution = not skip_constitution
 
+    # 检查是否是直接运行命令（以"运行"开头）
+    if cleaned_message.startswith("运行"):
+        # 提取命令（去除"运行"前缀）
+        command = cleaned_message[2:].strip()
+        print(f"[DirectCommand] 检测到直接命令执行: {command}")
+
+        # 在后台执行命令并发送结果
+        background_tasks.add_task(
+            execute_direct_command,
+            command,
+            chat_id,
+            session.session_id if session else None,
+        )
+
+        # 返回一个模拟的任务ID
+        import uuid
+
+        task_id = f"direct_{uuid.uuid4().hex[:8]}"
+
+        # 更新session状态
+        session_manager = get_session_manager()
+        await session_manager.update_session(
+            session.session_id,
+            status=SessionStatus.RUNNING,
+            task_id=task_id,
+        )
+
+        # 添加助手消息
+        await session_manager.add_message_to_session(
+            session.session_id,
+            "assistant",
+            f"正在执行命令: {command}",
+            task_id=task_id,
+        )
+
+        return {
+            "ok": True,
+            "session_id": session.session_id,
+            "task_id": task_id,
+            "status": "started",
+            "direct_command": True,
+        }
+
     task_id = await opencode_manager.create_task(
         user_message=cleaned_message,
         feishu_chat_id=chat_id,
@@ -545,6 +588,101 @@ async def start_opencode_task(
         "task_id": task_id,
         "status": "started",
     }
+
+
+async def execute_direct_command(
+    command: str,
+    chat_id: str,
+    session_id: str | None = None,
+):
+    """直接执行命令并发送结果到飞书"""
+    import asyncio
+    import subprocess
+
+    from .feishu_client import feishu_client
+    from .session_manager import SessionStatus, get_session_manager
+
+    print(f"[DirectCommand] 执行命令: {command}")
+
+    # 发送开始消息
+    await feishu_client.send_text_message(chat_id, f"🚀 **执行命令:** `{command}`\n⏳ 正在执行...")
+
+    try:
+        # 执行命令，带超时
+        process = await asyncio.create_subprocess_exec(
+            *command.split(),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+
+        try:
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=30)
+            returncode = process.returncode
+        except asyncio.TimeoutError:
+            process.kill()
+            await process.wait()
+            stdout = b""
+            stderr = "命令执行超时 (30秒)".encode()
+            returncode = -1
+
+        # 解码输出
+        stdout_text = stdout.decode("utf-8", errors="replace").strip()
+        stderr_text = stderr.decode("utf-8", errors="replace").strip()
+
+        # 构建结果消息
+        result_message = f"✅ **命令执行完成**\n\n"
+        result_message += f"**命令:** `{command}`\n"
+        result_message += f"**退出码:** {returncode}\n\n"
+
+        if stdout_text:
+            result_message += f"**输出:**\n```\n{stdout_text[:1000]}{'...' if len(stdout_text) > 1000 else ''}\n```\n"
+
+        if stderr_text:
+            result_message += f"**错误:**\n```\n{stderr_text[:500]}{'...' if len(stderr_text) > 500 else ''}\n```\n"
+
+        if not stdout_text and not stderr_text:
+            result_message += "**无输出**\n"
+
+        # 发送结果
+        await feishu_client.send_text_message(chat_id, result_message)
+
+        # 更新session状态
+        if session_id:
+            session_manager = get_session_manager()
+            await session_manager.update_session(
+                session_id,
+                status=SessionStatus.COMPLETED,
+            )
+
+            await session_manager.add_message_to_session(
+                session_id,
+                "assistant",
+                f"命令执行完成: {command}\n退出码: {returncode}",
+                result_type="completed",
+            )
+
+        print(f"[DirectCommand] 命令执行完成, 退出码: {returncode}")
+
+    except Exception as e:
+        error_message = f"❌ **命令执行失败**\n\n**命令:** `{command}`\n**错误:** {str(e)}"
+        await feishu_client.send_text_message(chat_id, error_message)
+
+        # 更新session状态
+        if session_id:
+            session_manager = get_session_manager()
+            await session_manager.update_session(
+                session_id,
+                status=SessionStatus.FAILED,
+            )
+
+            await session_manager.add_message_to_session(
+                session_id,
+                "assistant",
+                f"命令执行失败: {command}\n错误: {str(e)}",
+                result_type="failed",
+            )
+
+        print(f"[DirectCommand] 命令执行失败: {e}")
 
 
 async def run_opencode_with_session(
