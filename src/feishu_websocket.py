@@ -151,9 +151,7 @@ class OpenCodeEventProcessor:
         """
         try:
             logger.info(f"处理飞书事件: {self._event_type}")
-            logger.debug(
-                f"收到原始事件数据: {json.dumps(data, ensure_ascii=False)[:500]}"
-            )
+            logger.debug(f"收到原始事件数据: {json.dumps(data, ensure_ascii=False)[:500]}")
 
             # 将 SDK 事件格式转换为现有 webhook 格式
             webhook_body = self._convert_to_webhook_format(data)
@@ -161,66 +159,56 @@ class OpenCodeEventProcessor:
                 f"转换后的 webhook 格式: {json.dumps(webhook_body, ensure_ascii=False)[:500]}"
             )
 
-            # 创建模拟的后台任务管理器
-            background_tasks = MockBackgroundTasks()
+            # 发送 HTTP 请求到本地 webhook 端点进行处理
+            # 这样可以确保处理在主 FastAPI 应用的事件循环中进行
+            # 避免异步锁事件循环冲突问题
+            import urllib.request
+            import json as json_module
+            import time
 
-            # 在单独的线程中运行异步处理，避免阻塞 WebSocket 客户端线程的事件循环
-            import asyncio
-            import threading
-            from concurrent.futures import Future
-
-            # 创建 Future 用于获取结果
-            result_future = Future()
-
-            def run_async_in_thread():
-                """在单独线程中运行异步代码"""
-                try:
-                    # 在这个线程中创建新的事件循环
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-
-                    # 延迟导入，避免 asyncio 初始化问题
-                    from .legacy.feishu_card_handler import process_feishu_webhook
-
-                    # 运行异步处理
-                    result = loop.run_until_complete(
-                        process_feishu_webhook(webhook_body, background_tasks)
-                    )
-
-                    # 运行后台任务
-                    loop.run_until_complete(background_tasks.run_all())
-
-                    # 设置结果
-                    result_future.set_result(result)
-
-                except Exception as e:
-                    result_future.set_exception(e)
-                finally:
-                    # 清理事件循环
-                    if loop and not loop.is_closed():
-                        loop.close()
-
-            # 启动线程运行异步处理
-            thread = threading.Thread(target=run_async_in_thread, daemon=True)
-            thread.start()
-
-            # 等待结果（最多 10 秒）
             try:
-                result = result_future.result(timeout=10.0)
-                logger.debug(f"事件处理完成，结果: {result}")
+                # 构建请求
+                url = "http://127.0.0.1:8000/feishu/webhook/opencode"
+                headers = {
+                    "Content-Type": "application/json",
+                    "User-Agent": "Feishu-WebSocket-Processor/1.0",
+                }
 
-                # 返回处理结果（将发送回飞书服务器）
-                return self._convert_to_response_format(result)
+                # 将数据转换为 JSON 字节
+                data_bytes = json_module.dumps(webhook_body).encode("utf-8")
 
-            except TimeoutError:
-                # 超时，但事件会在后台继续处理
-                logger.warning("事件处理超时（10秒），但会在后台继续处理")
-                # 返回成功响应，避免飞书重试
-                return {"code": 0, "msg": "success", "note": "processing_in_background"}
+                # 发送请求
+                req = urllib.request.Request(url, data=data_bytes, headers=headers, method="POST")
+
+                start_time = time.time()
+                with urllib.request.urlopen(req, timeout=10) as response:
+                    response_data = response.read()
+                    status_code = response.getcode()
+                    elapsed = time.time() - start_time
+
+                    # 解析响应
+                    if response_data:
+                        try:
+                            result = json_module.loads(response_data.decode("utf-8"))
+                            logger.info(
+                                f"Webhook 处理成功，状态码: {status_code}, 耗时: {elapsed:.2f}s"
+                            )
+                            return self._convert_to_response_format(result)
+                        except json_module.JSONDecodeError:
+                            logger.warning(f"Webhook 响应不是有效的 JSON: {response_data[:200]}")
+                            return {"code": 0, "msg": "success", "note": "webhook_processed"}
+                    else:
+                        logger.info(
+                            f"Webhook 处理成功（无响应体），状态码: {status_code}, 耗时: {elapsed:.2f}s"
+                        )
+                        return {"code": 0, "msg": "success", "note": "webhook_processed"}
+
+            except urllib.error.URLError as e:
+                logger.error(f"发送到本地 webhook 失败: {e}")
+                # 返回成功响应避免飞书重试，事件会丢失但服务不会崩溃
+                return {"code": 0, "msg": "success", "note": "webhook_failed_but_ignored"}
             except Exception as e:
-                logger.error(f"等待事件处理结果出错: {e}")
-                # 其他错误也返回成功，避免飞书重试
-                logger.warning(f"事件处理出错，但返回成功避免重试: {e}")
+                logger.error(f"HTTP 请求处理异常: {e}")
                 return {"code": 0, "msg": "success", "note": "error_ignored"}
 
         except Exception as e:
@@ -256,9 +244,7 @@ class OpenCodeEventProcessor:
             }
 
         # 未知格式，尝试直接使用
-        logger.warning(
-            f"未知的事件格式: {json.dumps(sdk_event, ensure_ascii=False)[:200]}..."
-        )
+        logger.warning(f"未知的事件格式: {json.dumps(sdk_event, ensure_ascii=False)[:200]}...")
         return sdk_event
 
     def _convert_to_response_format(self, webhook_result: dict) -> dict:
@@ -332,9 +318,7 @@ class OpenCodeEventHandler(EventDispatcherHandler):
         # self.register_callback_processor("p2.im.chat.member.bot.added_v1", ...)
         # self.register_callback_processor("p2.im.chat.member.bot.deleted_v1", ...)
 
-    def register_callback_processor(
-        self, event_key: str, processor: ICallBackProcessor
-    ):
+    def register_callback_processor(self, event_key: str, processor: ICallBackProcessor):
         """注册回调处理器"""
         self._callback_processor_map[event_key] = processor
         logger.info(f"注册事件处理器: {event_key}")
@@ -397,9 +381,7 @@ class FeishuWebSocketClient:
             if not sdk_logger.handlers:
                 handler = logging.StreamHandler()
                 handler.setFormatter(
-                    logging.Formatter(
-                        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-                    )
+                    logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
                 )
                 sdk_logger.addHandler(handler)
 
@@ -439,9 +421,7 @@ class FeishuWebSocketClient:
                     duration = time.time() - start_time
                     if duration > 30:  # 连接稳定超过30秒，重置重试计数
                         retry_count = 0
-                        logger.info(
-                            f"线程 {thread_id}: 连接稳定 {duration:.1f} 秒，重置重试计数"
-                        )
+                        logger.info(f"线程 {thread_id}: 连接稳定 {duration:.1f} 秒，重置重试计数")
                     else:
                         retry_count += 1
                         logger.warning(
@@ -454,16 +434,12 @@ class FeishuWebSocketClient:
                         exc_info=True,
                     )
                     retry_count += 1
-                    logger.warning(
-                        f"线程 {thread_id}: 异常失败，重试计数: {retry_count}"
-                    )
+                    logger.warning(f"线程 {thread_id}: 异常失败，重试计数: {retry_count}")
 
                 # 如果仍在运行，则等待后重试
                 if self.running:
                     # 指数退避 + 抖动
-                    delay = min(
-                        base_delay * (2 ** min(retry_count, 10)), max_retry_delay
-                    )
+                    delay = min(base_delay * (2 ** min(retry_count, 10)), max_retry_delay)
                     jitter = random.uniform(0.8, 1.2)  # ±20% 抖动
                     actual_delay = delay * jitter
                     logger.info(
@@ -508,11 +484,7 @@ class FeishuWebSocketClient:
         else:
             # 备用方案：直接尝试关闭连接（可能在不同的事件循环中）
             try:
-                if (
-                    self._client
-                    and hasattr(self._client, "_conn")
-                    and self._client._conn
-                ):
+                if self._client and hasattr(self._client, "_conn") and self._client._conn:
                     # 关闭 WebSocket 连接
                     await self._client._conn.close()
                     logger.debug("已关闭 WebSocket 连接")

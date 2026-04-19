@@ -39,6 +39,7 @@ def init(
         "kimi": _check_kimi(),
         "claude": _has_binary("claude"),
         "openclaw": _check_openclaw(),
+        "openrouter": bool(os.getenv("OPENROUTER_API_KEY")),
     }
 
     for name, ok in scans.items():
@@ -82,6 +83,7 @@ def init(
     cfg.agents.kimi.enabled = scans["kimi"]
     cfg.agents.claude.enabled = scans["claude"]
     cfg.agents.openclaw.enabled = scans["openclaw"]
+    cfg.agents.openrouter.enabled = scans["openrouter"]
 
     # Write config (convert Paths to strings for safe YAML)
     config_dict = cfg.model_dump()
@@ -199,6 +201,98 @@ def logs(follow: bool = typer.Option(False, "-f", "--follow")):
 
 
 @app.command()
+def test_openrouter():
+    """Test all available OpenRouter models."""
+    from .providers.openrouter import OpenRouterProvider
+    
+    console.print(Panel.fit("🧪 Testing OpenRouter Models", style="bold blue"))
+    
+    # Check API key
+    api_key = os.getenv("OPENROUTER_API_KEY")
+    if not api_key:
+        console.print("[red]❌ OPENROUTER_API_KEY environment variable not set[/red]")
+        console.print("\n请设置环境变量:")
+        console.print("  export OPENROUTER_API_KEY=your_api_key_here")
+        console.print("\n或添加到 .env 文件:")
+        console.print("  OPENROUTER_API_KEY=your_api_key_here")
+        raise typer.Exit(1)
+    
+    # Create provider
+    provider = OpenRouterProvider(api_key=api_key)
+    
+    # Test connection
+    console.print("\n[bold]🔗 Testing OpenRouter connection...[/bold]")
+    import asyncio
+    
+    async def run_tests():
+        # Health check
+        healthy, msg = await provider.health_check()
+        if not healthy:
+            console.print(f"[red]❌ Connection failed: {msg}[/red]")
+            return
+        
+        console.print(f"[green]✅ Connection successful: {msg}[/green]")
+        
+        # Test all models
+        console.print("\n[bold]🧪 Testing available models...[/bold]")
+        console.print("This may take a minute...")
+        
+        results = await provider.test_all_models()
+        
+        if "error" in results:
+            console.print(f"[red]❌ Error: {results['error']}[/red]")
+            return
+        
+        # Display results
+        console.print(f"\n[bold]📊 Results: {results['total_models']} total models available[/bold]")
+        console.print(f"[bold]✅ {len(results['available_models'])} popular models tested[/bold]")
+        
+        # Create table
+        table = Table(title="Model Test Results")
+        table.add_column("Model", style="cyan")
+        table.add_column("Status", style="bold")
+        table.add_column("Response", style="green")
+        table.add_column("Tokens", style="yellow")
+        
+        for model, test_result in results["test_results"].items():
+            if test_result.get("available"):
+                status = "✅ Available"
+                response = test_result.get("response", "N/A")[:30]
+                tokens = str(test_result.get("tokens", 0))
+            else:
+                status = "❌ Unavailable"
+                response = test_result.get("error", "Unknown error")[:30]
+                tokens = "N/A"
+            
+            table.add_row(model, status, response, tokens)
+        
+        console.print(table)
+        
+        # Summary
+        available_count = sum(1 for r in results["test_results"].values() if r.get("available"))
+        total_tested = len(results["test_results"])
+        
+        console.print(f"\n[bold]📈 Summary:[/bold]")
+        console.print(f"  Available: {available_count}/{total_tested} models")
+        console.print(f"  Success rate: {(available_count/total_tested)*100:.1f}%")
+        
+        # Save results to file
+        results_file = Path.home() / ".config" / "vibebridge" / "openrouter_test_results.json"
+        results_file.parent.mkdir(parents=True, exist_ok=True)
+        
+        import json
+        with open(results_file, "w", encoding="utf-8") as f:
+            json.dump(results, f, indent=2, ensure_ascii=False)
+        
+        console.print(f"\n[green]✅ Results saved to: {results_file}[/green]")
+        
+        # Clean up
+        await provider.close()
+    
+    asyncio.run(run_tests())
+
+
+@app.command()
 def doctor():
     """Run diagnostic checks."""
     table = Table(title="VibeBridge Doctor")
@@ -213,6 +307,7 @@ def doctor():
     table.add_row("Kimi", "✅ Found" if _check_kimi() else "❌ Not found")
     table.add_row("Claude", "✅ Found" if _has_binary("claude") else "❌ Not found")
     table.add_row("OpenClaw Gateway", "✅ Running" if _check_openclaw() else "❌ Not reachable")
+    table.add_row("OpenRouter API Key", "✅ Configured" if os.getenv("OPENROUTER_API_KEY") else "❌ Not configured")
 
     console.print(table)
 

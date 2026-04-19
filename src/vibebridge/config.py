@@ -44,12 +44,20 @@ class ClaudeProviderConfig(BaseModel):
     binary: str = "auto"
 
 
+class OpenRouterProviderConfig(BaseModel):
+    enabled: bool = False
+    api_key: str = ""
+    default_model: str = "openai/gpt-4o"
+    base_url: str = "https://openrouter.ai/api/v1"
+
+
 class AgentsConfig(BaseModel):
     default_provider: str = "opencode"
     opencode: OpenCodeProviderConfig = Field(default_factory=OpenCodeProviderConfig)
     openclaw: OpenClawProviderConfig = Field(default_factory=OpenClawProviderConfig)
     kimi: KimiProviderConfig = Field(default_factory=KimiProviderConfig)
     claude: ClaudeProviderConfig = Field(default_factory=ClaudeProviderConfig)
+    openrouter: OpenRouterProviderConfig = Field(default_factory=OpenRouterProviderConfig)
 
 
 class ApprovalRule(BaseModel):
@@ -143,6 +151,7 @@ def _apply_flat_env_overrides(data: dict) -> dict:
         "FEISHU_VERIFICATION_TOKEN": ("feishu", "verification_token"),
         "FEISHU_MODE": ("feishu", "mode"),
         "VB_DEFAULT_PROVIDER": ("agents", "default_provider"),
+        "OPENROUTER_API_KEY": ("agents", "openrouter", "api_key"),
     }
     for env_key, path in mappings.items():
         val = os.getenv(env_key)

@@ -67,6 +67,7 @@ Switch providers on the fly:
 @VibeBridge /kimi refactor this function to use async/await
 @VibeBridge /claude design a PostgreSQL schema for an e-commerce site
 @VibeBridge /openclaw check my project status
+@VibeBridge /openrouter write a Python script with GPT-4o
 ```
 
 ---
@@ -101,6 +102,7 @@ Streaming result cards back to Feishu
 | Provider | Status | How it works |
 |----------|--------|--------------|
 | **OpenCode** | ✅ Full | Spawns `opencode run --format json` with streaming output. |
+| **OpenRouter** | ✅ Full | Connects to OpenRouter API with 100+ models support. |
 | **OpenClaw** | ✅ Health + Basic | Connects to local OpenClaw Gateway HTTP API. |
 | **Kimi Code CLI** | 🚧 Partial | Requires `kimi acp` running; bridge talks via ACP/MCP protocol. |
 | **Claude Code** | 🚧 Partial | Health check only; execution layer coming soon. |
@@ -137,6 +139,11 @@ agents:
   claude:
     enabled: false
     binary: auto
+  openrouter:
+    enabled: false
+    api_key: "${OPENROUTER_API_KEY}"
+    default_model: "openai/gpt-4o"
+    base_url: "https://openrouter.ai/api/v1"
 
 approval:
   enabled: true
@@ -192,9 +199,40 @@ pip install -e ".[dev]"
 
 Run tests:
 
-```bash
+```
 pytest
 ```
+
+---
+
+## 🌐 OpenRouter Integration
+
+VibeBridge now supports OpenRouter API with access to 100+ AI models including GPT-4o, Claude 3.5, Gemini, Llama, and more.
+
+### Quick Start with OpenRouter
+
+1. Get your API key from [OpenRouter](https://openrouter.ai/)
+2. Set environment variable:
+   ```bash
+   export OPENROUTER_API_KEY=your_key_here
+   ```
+3. Test all available models:
+   ```bash
+   vibebridge test-openrouter
+   ```
+4. Use in chat:
+   ```
+   @VibeBridge /openrouter write a Python script to analyze data
+   ```
+
+### Features
+- ✅ Test all 100+ models with one command
+- ✅ Real-time streaming responses
+- ✅ Automatic model availability checking
+- ✅ Results saved to JSON for analysis
+- ✅ Integrated with approval system
+
+See [OPENROUTER_README.md](OPENROUTER_README.md) for detailed documentation.
 
 ---
 

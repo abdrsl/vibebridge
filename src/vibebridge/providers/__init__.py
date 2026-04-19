@@ -7,6 +7,7 @@ from .claude import ClaudeProvider
 from .kimi import KimiProvider
 from .openclaw import OpenClawProvider
 from .opencode import OpenCodeProvider
+from .openrouter import OpenRouterProvider
 
 
 __all__ = [
@@ -15,6 +16,7 @@ __all__ = [
     "KimiProvider",
     "OpenClawProvider",
     "OpenCodeProvider",
+    "OpenRouterProvider",
     "build_providers",
 ]
 
@@ -46,6 +48,13 @@ def build_providers(config) -> dict[str, BaseProvider]:
     if config.claude.enabled:
         providers["claude"] = ClaudeProvider(
             binary=None if config.claude.binary == "auto" else config.claude.binary,
+        )
+
+    if config.openrouter.enabled:
+        providers["openrouter"] = OpenRouterProvider(
+            api_key=config.openrouter.api_key,
+            default_model=config.openrouter.default_model,
+            base_url=config.openrouter.base_url,
         )
 
     return providers
