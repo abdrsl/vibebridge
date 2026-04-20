@@ -45,12 +45,14 @@ test-results/
 # Local data and logs
 data/tasks/*.json
 data/*.txt
+data/memory.json
 !data/tasks/.gitkeep
 logs/
 *.log
 
 # Debug and test files
 debug_encryption.py
+verify_*.py
 test_*.txt
 log_test.txt
 api_test.txt
@@ -71,6 +73,9 @@ APPROVAL_BOT_C_SETUP.md
 DEPLOYMENT_SUMMARY.md
 THREE_BOTS_SETUP.md
 PROJECT_CLEANUP_REPORT.md
+opencode_v2_test_report.md
+IMPLEMENTATION_SUMMARY.md
+HISTORY_CONTEXT_EXAMPLE.md
 
 # Aider and development tools
 .aider*
