@@ -1,0 +1,40 @@
+# Git
+.git/
+.gitignore
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+
+# Virtual environments
+venv/
+.venv/
+venv.backup.*/
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Data & logs
+data/
+logs/
+tmp/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Docs (internal)
+docs/archive/
+docs/*_SUMMARY.md
+docs/RELEASE_CHECKLIST.md
+docs/TEST_RESULTS.md
+
+# OS
+.DS_Store

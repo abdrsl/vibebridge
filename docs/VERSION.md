@@ -1,4 +1,4 @@
-# OpenCode-Feishu Bridge - 版本信息
+# VibeBridge - 版本信息
 
 ## 当前版本: v1.0.2
 

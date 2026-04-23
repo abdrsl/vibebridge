@@ -1,4 +1,4 @@
-# OpenCode-Feishu Bridge v1.0.1 发布清单
+# VibeBridge v1.0.1 发布清单
 
 ## 发布状态
 - **版本**: v1.0.1

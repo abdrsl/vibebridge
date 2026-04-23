@@ -35,7 +35,7 @@ def init(
     # Scan local providers
     console.print("\n[bold]🔍 扫描本地 AI 工具...[/bold]")
     scans = {
-        "opencode": _has_binary("opencode") or _exists(Path.home() / ".nvm/versions/node/v24.14.0/bin/opencode"),
+        "opencode": _has_binary("opencode") or _exists(Path.home() / ".nvm/versions/node/v24.14.0/bin/opencode"  # TODO: make configurable),
         "kimi": _check_kimi(),
         "claude": _has_binary("claude"),
         "openclaw": _check_openclaw(),

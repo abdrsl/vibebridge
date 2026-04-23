@@ -196,7 +196,7 @@ async def main():
 
     print("⚠️  Note: Make sure the server is running on localhost:8000")
     print(
-        "   Start with: cd /home/user/workspace/opencode-feishu-bridge/src && python3 main.py"
+        "   Start with: cd /home/user/workspace/vibebridge/src && python3 main.py"
     )
     print()
 

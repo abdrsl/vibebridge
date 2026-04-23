@@ -350,7 +350,7 @@ class OpenCodeManager:
 
         try:
             # 使用绝对路径确保找到 opencode
-            opencode_path = "/home/user/.nvm/versions/node/v24.14.0/bin/opencode"
+            opencode_path = os.path.expanduser("~/.nvm/versions/node/v24.14.0/bin/opencode")
             cmd = [
                 opencode_path,
                 "run",

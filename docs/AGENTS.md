@@ -1,4 +1,4 @@
-# AGENTS.md - OpenCode-Feishu Bridge Multi-Agent Architecture
+# AGENTS.md - VibeBridge Multi-Agent Architecture
 
 ## Project Overview
 

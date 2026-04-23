@@ -1,7 +1,7 @@
 # Security Implementation
 
 ## Overview
-This document summarizes the security measures implemented in the Embrace OpenCode-Feishu Bridge system to protect against common threats and ensure secure operation.
+This document summarizes the security measures implemented in the Embrace VibeBridge system to protect against common threats and ensure secure operation.
 
 ## 1. Sensitive Data Encryption
 

@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 # Path to workspace skills directory (workspace/.skills/)
-WORKSPACE_ROOT = Path("/home/user/workspace")
+WORKSPACE_ROOT = Path.home() / "workspace"
 SKILLS_DIR = WORKSPACE_ROOT / ".skills"
 
 
