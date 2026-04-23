@@ -264,6 +264,19 @@ async def handle_approval_card_action(
         return {"ok": True, "action": "processed", "response": {}}
 
 
+@app.post("/internal/notify")
+async def internal_notify(request: Request):
+    """Receive notifications from OpenClaw gateway."""
+    try:
+        body = await request.json()
+        print(f"[Notify] Received notification: {body}")
+    except Exception as e:
+        print(f"[Notify] Error parsing notification: {e}")
+        body = None
+    # Return 200 OK to acknowledge receipt
+    return {"ok": True, "received": True}
+
+
 # Backward compatibility: legacy endpoint aliases
 @app.post("/feishu/webhook/opencode")
 async def feishu_webhook_legacy_opencode(request: Request):

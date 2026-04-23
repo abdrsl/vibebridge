@@ -545,6 +545,16 @@ async def feishu_webhook_opencode(
     return await process_feishu_webhook(body, background_tasks)
 
 
+@app.post("/internal/notify")
+@limiter.limit("60 per minute")
+async def internal_notify(request: Request, body: dict[str, Any] = None):
+    """Receive notifications from OpenClaw gateway."""
+    # Log the notification for debugging
+    print(f"[Notify] Received notification: {body}")
+    # Return 200 OK to acknowledge receipt
+    return {"ok": True, "received": True}
+
+
 # ============================================
 # OpenClaw 审批系统集成（自动生成）
 # ============================================
