@@ -46,7 +46,7 @@ class OpenCodeMonitor:
 
     def get_task_info(self):
         """获取任务信息"""
-        ai_project_dir = Path("/home/user/workspace/opencode-feishu-bridge")
+        ai_project_dir = Path("/home/user/workspace/vibebridge")
         tasks_dir = ai_project_dir / "data/tasks"
 
         tasks = []

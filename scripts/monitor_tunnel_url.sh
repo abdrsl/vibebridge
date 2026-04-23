@@ -1,8 +1,8 @@
 #!/bin/bash
 # 监控隧道 URL 变化并自动推送通知
 
-TUNNEL_URL_FILE="/home/user/workspace/opencode-feishu-bridge/logs/last_tunnel_url.txt"
-LAST_URL_FILE="/home/user/workspace/opencode-feishu-bridge/logs/.last_notified_url.txt"
+TUNNEL_URL_FILE="/home/user/workspace/vibebridge/logs/last_tunnel_url.txt"
+LAST_URL_FILE="/home/user/workspace/vibebridge/logs/.last_notified_url.txt"
 FEISHU_CHAT_ID="your_chat_id_here"
 # 备用通知方式 - 发送到当前会话
 NOTIFY_SESSION="your_notify_session_here"

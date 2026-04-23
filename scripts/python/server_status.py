@@ -46,7 +46,7 @@ try:
         [
             "tail",
             "-20",
-            "/home/user/workspace/opencode-feishu-bridge/logs/server.log",
+            "/home/user/workspace/vibebridge/logs/server.log",
         ],
         capture_output=True,
         text=True,
