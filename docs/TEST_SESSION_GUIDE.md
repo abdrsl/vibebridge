@@ -122,7 +122,7 @@ print(f"Session ID: {session.session_id}")
 python3 tests/test_session_manager.py
 
 # 或者直接运行模块
-cd /home/user/workspace/opencode-feishu-bridge
+cd /home/user/workspace/vibebridge
 python3 -m tests.test_session_manager
 ```
 
@@ -148,7 +148,7 @@ asyncio.run(cleanup())
 确保在项目根目录运行，并添加src到Python路径：
 
 ```bash
-cd /home/user/workspace/opencode-feishu-bridge
+cd /home/user/workspace/vibebridge
 export PYTHONPATH=$PYTHONPATH:$(pwd)/src
 ```
 

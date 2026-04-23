@@ -3,7 +3,7 @@
 # OpenCode-Feishu Bridge 完整启动脚本
 # 启动服务器、隧道和监控服务
 
-cd /home/user/workspace/opencode-feishu-bridge
+cd /home/user/workspace/vibebridge
 
 echo "=========================================="
 echo "🚀 OpenCode-Feishu Bridge 完整启动"

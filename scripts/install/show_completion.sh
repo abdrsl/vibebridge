@@ -8,7 +8,7 @@ echo "🎉 自动启动系统安装完成！"
 echo "=========================================="
 echo ""
 
-cd /home/user/workspace/opencode-feishu-bridge
+cd /home/user/workspace/vibebridge
 
 # 显示当前状态
 echo "📊 当前系统状态:"
@@ -42,7 +42,7 @@ echo "----------------------------------------"
 echo "• scripts/install/auto_recovery.sh      - 自动恢复脚本"
 echo "• manage.sh             - 管理脚本（推荐）"
 echo "• scripts/install/install_autostart.sh  - 自动启动安装"
-echo "• deploy/opencode-feishu-bridge.service    - systemd服务文件"
+echo "• deploy/vibebridge.service    - systemd服务文件"
 echo "• deploy/crontab.config        - crontab配置"
 echo "• docs/AUTOSTART_README.md   - 详细文档"
 echo ""

@@ -3,7 +3,7 @@
 # OpenCode-Feishu Bridge 用户级自动启动脚本
 # 无需root权限，使用nohup实现后台运行
 
-PROJECT_DIR="/home/user/workspace/opencode-feishu-bridge"
+PROJECT_DIR="/home/user/workspace/vibebridge"
 LOG_DIR="$PROJECT_DIR/logs"
 PID_DIR="$LOG_DIR/pids"
 

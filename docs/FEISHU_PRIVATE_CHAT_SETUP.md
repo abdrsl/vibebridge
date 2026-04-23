@@ -133,7 +133,7 @@
 运行以下命令检查配置：
 
 ```bash
-cd ~/workspace/opencode-feishu-bridge
+cd ~/workspace/vibebridge
 source .venv/bin/activate
 python3 check_feishu_config.py
 ```

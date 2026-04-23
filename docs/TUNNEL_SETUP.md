@@ -142,7 +142,7 @@ ssh -o ServerAliveInterval=60 -R 80:localhost:8000 nokey@localhost.run
 ```bash
 # 使用tmux或screen保持进程
 tmux new -s feishu-server
-cd /home/user/workspace/opencode-feishu-bridge
+cd /home/user/workspace/vibebridge
 source .venv/bin/activate
 uvicorn src.main:app --host 0.0.0.0 --port 8000
 # 按Ctrl+B，然后按D分离会话

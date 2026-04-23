@@ -118,7 +118,7 @@ src/vibebridge/
 ### 1. 启动服务
 
 ```bash
-cd /home/user/workspace/opencode-feishu-bridge
+cd /home/user/workspace/vibebridge
 vibebridge start
 ```
 

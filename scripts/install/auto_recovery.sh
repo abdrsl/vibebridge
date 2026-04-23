@@ -7,7 +7,7 @@
 # 3. 记录日志
 
 # 配置
-PROJECT_DIR="/home/user/workspace/opencode-feishu-bridge"
+PROJECT_DIR="/home/user/workspace/vibebridge"
 LOG_FILE="$PROJECT_DIR/logs/auto_recovery.log"
 PID_FILE="$PROJECT_DIR/logs/auto_recovery.pid"
 SERVER_PORT=8000

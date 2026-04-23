@@ -5,7 +5,7 @@
 
 set -e
 
-PROJECT_DIR="/home/user/workspace/opencode-feishu-bridge"
+PROJECT_DIR="/home/user/workspace/vibebridge"
 SERVICE_USER="akliedrak"
 
 echo "=========================================="
@@ -23,12 +23,12 @@ fi
 # 安装服务
 echo "📦 安装系统服务..."
 
-cp "$PROJECT_DIR/deploy/opencode-feishu-bridge.service" /etc/systemd/system/
-cp "$PROJECT_DIR/deploy/opencode-feishu-bridge-tunnel.service" /etc/systemd/system/
+cp "$PROJECT_DIR/deploy/vibebridge.service" /etc/systemd/system/
+cp "$PROJECT_DIR/deploy/vibebridge-tunnel.service" /etc/systemd/system/
 
 # 安装logrotate配置
-if [ -f "$PROJECT_DIR/deploy/opencode-feishu-bridge.logrotate" ]; then
-    cp "$PROJECT_DIR/deploy/opencode-feishu-bridge.logrotate" /etc/logrotate.d/opencode-feishu-bridge
+if [ -f "$PROJECT_DIR/deploy/vibebridge.logrotate" ]; then
+    cp "$PROJECT_DIR/deploy/vibebridge.logrotate" /etc/logrotate.d/vibebridge
     echo "📝 Logrotate配置已安装"
 else
     echo "⚠️  未找到logrotate配置，跳过"
@@ -44,22 +44,22 @@ echo ""
 # 启动服务
 echo "🚀 启动服务..."
 
-systemctl enable opencode-feishu-bridge.service
-systemctl start opencode-feishu-bridge.service
+systemctl enable vibebridge.service
+systemctl start vibebridge.service
 
 sleep 3
 
-if systemctl is-active --quiet opencode-feishu-bridge.service; then
+if systemctl is-active --quiet vibebridge.service; then
     echo "✅ 主服务已启动"
 else
     echo "❌ 主服务启动失败"
-    echo "查看日志: journalctl -u opencode-feishu-bridge.service"
+    echo "查看日志: journalctl -u vibebridge.service"
     exit 1
 fi
 
 # 启动隧道服务
-systemctl enable opencode-feishu-bridge-tunnel.service
-systemctl start opencode-feishu-bridge-tunnel.service
+systemctl enable vibebridge-tunnel.service
+systemctl start vibebridge-tunnel.service
 
 echo ""
 echo "=========================================="
@@ -67,18 +67,18 @@ echo "✅ 安装完成！"
 echo "=========================================="
 echo ""
 echo "服务状态:"
-echo "  主服务:   systemctl status opencode-feishu-bridge.service"
-echo "  隧道服务: systemctl status opencode-feishu-bridge-tunnel.service"
+echo "  主服务:   systemctl status vibebridge.service"
+echo "  隧道服务: systemctl status vibebridge-tunnel.service"
 echo ""
 echo "查看日志:"
-echo "  主服务:   journalctl -u opencode-feishu-bridge.service -f"
-echo "  隧道服务: journalctl -u opencode-feishu-bridge-tunnel.service -f"
+echo "  主服务:   journalctl -u vibebridge.service -f"
+echo "  隧道服务: journalctl -u vibebridge-tunnel.service -f"
 echo ""
 echo "常用命令:"
-echo "  启动:   sudo systemctl start opencode-feishu-bridge.service"
-echo "  停止:   sudo systemctl stop opencode-feishu-bridge.service"
-echo "  重启:   sudo systemctl restart opencode-feishu-bridge.service"
-echo "  查看状态: sudo systemctl status opencode-feishu-bridge.service"
+echo "  启动:   sudo systemctl start vibebridge.service"
+echo "  停止:   sudo systemctl stop vibebridge.service"
+echo "  重启:   sudo systemctl restart vibebridge.service"
+echo "  查看状态: sudo systemctl status vibebridge.service"
 echo ""
 echo "当前URL:"
 sleep 2
@@ -100,14 +100,14 @@ echo "OpenCode-Feishu Bridge 状态"
 echo "=========================================="
 echo ""
 echo "主服务:"
-systemctl status opencode-feishu-bridge.service --no-pager -l | head -10
+systemctl status vibebridge.service --no-pager -l | head -10
 echo ""
 echo "隧道服务:"
-systemctl status opencode-feishu-bridge-tunnel.service --no-pager -l | head -10
+systemctl status vibebridge-tunnel.service --no-pager -l | head -10
 echo ""
 echo "当前URL:"
-if [ -f /home/user/workspace/opencode-feishu-bridge/logs/current_tunnel_url.txt ]; then
-    cat /home/user/workspace/opencode-feishu-bridge/logs/current_tunnel_url.txt
+if [ -f /home/user/workspace/vibebridge/logs/current_tunnel_url.txt ]; then
+    cat /home/user/workspace/vibebridge/logs/current_tunnel_url.txt
 fi
 echo ""
 echo "=========================================="
@@ -116,13 +116,13 @@ chmod +x /usr/local/bin/aip-status
 
 cat > /usr/local/bin/aip-log << 'EOF'
 #!/bin/bash
-journalctl -u opencode-feishu-bridge.service -f
+journalctl -u vibebridge.service -f
 EOF
 chmod +x /usr/local/bin/aip-log
 
 cat > /usr/local/bin/aip-restart << 'EOF'
 #!/bin/bash
-sudo systemctl restart opencode-feishu-bridge.service opencode-feishu-bridge-tunnel.service
+sudo systemctl restart vibebridge.service vibebridge-tunnel.service
 echo "✅ 服务已重启"
 EOF
 chmod +x /usr/local/bin/aip-restart

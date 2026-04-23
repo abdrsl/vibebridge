@@ -1,5 +1,5 @@
 # Logrotate configuration for OpenCode-Feishu Bridge
-/home/user/workspace/opencode-feishu-bridge/logs/*.log {
+/home/user/workspace/vibebridge/logs/*.log {
     daily
     missingok
     rotate 7
@@ -13,7 +13,7 @@
 }
 
 # Exclude pid files and other non-log files
-/home/user/workspace/opencode-feishu-bridge/logs/*.pid {
+/home/user/workspace/vibebridge/logs/*.pid {
     missingok
     rotate 0
     weekly

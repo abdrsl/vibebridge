@@ -71,7 +71,7 @@
 ## 🏗️ 项目结构
 
 ```
-opencode-feishu-bridge/
+vibebridge/
 ├── src/                           # 源代码目录
 │   ├── agents/                    # 多智能体系统（6个智能体）
 │   ├── legacy/                    # 向后兼容模块

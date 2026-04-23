@@ -104,7 +104,7 @@ OpenCode任务 → 后台执行
 ## 📁 项目结构
 
 ```
-/home/user/workspace/opencode-feishu-bridge/
+/home/user/workspace/vibebridge/
 ├── app/
 │   ├── main.py                    # FastAPI主入口
 │   ├── feishu_webhook_handler.py  # Webhook处理器
@@ -137,7 +137,7 @@ OpenCode任务 → 后台执行
 ### 1. 一键启动
 
 ```bash
-cd /home/user/workspace/opencode-feishu-bridge
+cd /home/user/workspace/vibebridge
 ./start_all.sh
 ```
 
@@ -235,4 +235,4 @@ tail -f logs/cron.log
 
 **生产就绪！** 🚀
 
-所有代码、配置和文档都已保存在 `/home/user/workspace/opencode-feishu-bridge/`，永久有效。
+所有代码、配置和文档都已保存在 `/home/user/workspace/vibebridge/`，永久有效。

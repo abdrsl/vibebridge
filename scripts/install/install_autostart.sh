@@ -2,7 +2,7 @@
 #
 # 安装OpenCode-Feishu Bridge自动启动
 
-PROJECT_DIR="/home/user/workspace/opencode-feishu-bridge"
+PROJECT_DIR="/home/user/workspace/vibebridge"
 
 echo "=========================================="
 echo "安装 OpenCode-Feishu Bridge 自动启动"
@@ -22,7 +22,7 @@ install_crontab() {
     fi
     
     # 添加到crontab
-    (crontab -l 2>/dev/null; echo ""; echo "# OpenCode-Feishu Bridge自动启动"; echo "* * * * * cd $PROJECT_DIR && flock -n /tmp/opencode-feishu-bridge-autostart.lock -c './manage.sh start' >> $PROJECT_DIR/logs/cron.log 2>&1") | crontab -
+    (crontab -l 2>/dev/null; echo ""; echo "# OpenCode-Feishu Bridge自动启动"; echo "* * * * * cd $PROJECT_DIR && flock -n /tmp/vibebridge-autostart.lock -c './manage.sh start' >> $PROJECT_DIR/logs/cron.log 2>&1") | crontab -
     
     echo "✅ 已添加到crontab"
     echo "   每分钟检查服务器状态"

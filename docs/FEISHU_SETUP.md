@@ -167,7 +167,7 @@ FEISHU_VERIFICATION_TOKEN=your_verification_token_from_feishu
 
 **Step 3: Restart Server**
 ```bash
-cd /home/user/workspace/opencode-feishu-bridge
+cd /home/user/workspace/vibebridge
 pkill -f "uvicorn" 2>/dev/null || true
 source .venv/bin/activate
 uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload > logs/server_final.log 2>&1 &
@@ -201,7 +201,7 @@ serveo.net tunnels are **temporary** and change each time you restart the tunnel
 **To restart tunnel and get new URL:**
 
 ```bash
-cd /home/user/workspace/opencode-feishu-bridge
+cd /home/user/workspace/vibebridge
 pkill -f "serveo" 2>/dev/null || true
 ssh -o StrictHostKeyChecking=no -R 80:localhost:8000 serveo.net > logs/serveo.log 2>&1 &
 sleep 3

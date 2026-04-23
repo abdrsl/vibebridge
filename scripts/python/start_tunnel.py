@@ -13,8 +13,8 @@ project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
 # 加载环境变量
-feishu_env = project_root.parent / "MyCompany" / ".secrets" / "feishu.env"
-api_keys_env = project_root.parent / "MyCompany" / ".secrets" / "api-keys.env"
+feishu_env = project_root.parent / "VibeBridge" / ".secrets" / "feishu.env"
+api_keys_env = project_root.parent / "VibeBridge" / ".secrets" / "api-keys.env"
 
 if feishu_env.exists():
     with open(feishu_env, "r") as f:

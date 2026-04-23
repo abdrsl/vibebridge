@@ -25,7 +25,7 @@
 ## 📁 新文件说明
 
 ```
-/home/user/workspace/opencode-feishu-bridge/
+/home/user/workspace/vibebridge/
 ├── app/
 │   ├── message_deduplicator.py   # 消息去重器
 │   ├── retry_handler.py          # 重试机制
@@ -41,7 +41,7 @@
 ### 方式1: 一键启动（推荐）
 
 ```bash
-cd /home/user/workspace/opencode-feishu-bridge
+cd /home/user/workspace/vibebridge
 ./start_all.sh
 ```
 

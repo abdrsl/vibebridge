@@ -1,4 +1,4 @@
 #!/bin/bash
 cd "$(dirname "$0")"
-source /home/user/workspace/MyCompany/.secrets/feishu.env
+source /home/user/workspace/VibeBridge/.secrets/feishu.env
 python3 main.py

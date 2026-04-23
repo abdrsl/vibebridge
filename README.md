@@ -280,7 +280,7 @@ VibeBridge now supports OpenRouter API with access to 100+ AI models including G
 - ✅ Results saved to JSON for analysis
 - ✅ Integrated with approval system
 
-See [OPENROUTER_README.md](OPENROUTER_README.md) for detailed documentation.
+See [docs/OPENROUTER_README.md](docs/OPENROUTER_README.md) for detailed documentation.
 
 ---
 
