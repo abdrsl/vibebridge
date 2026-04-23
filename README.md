@@ -45,13 +45,33 @@ vibebridge init --non-interactive
 
 ### Start the server
 
-```bash
-# Foreground mode (good for testing)
-vibebridge start
+#### WebSocket mode (Recommended)
 
-# Or install as a systemd user service for auto-start on boot
-vibebridge start --install
+WebSocket mode uses a persistent connection to Feishu — **no public URL required**.
+
+```bash
+# Start with WebSocket support
+python3 -m uvicorn main:app --host 0.0.0.0 --port 8000
+
+# Or in the project directory
+./venv/bin/python3 -m uvicorn main:app --host 0.0.0.0 --port 8000
 ```
+
+Verify WebSocket is connected:
+```bash
+curl http://localhost:8000/health
+# Expected: {"ok":true,"multi_agent_system":true}
+```
+
+#### Webhook mode
+
+Webhook mode requires a public URL for Feishu to push events to.
+
+```bash
+vibebridge start
+```
+
+Configure the Feishu webhook URL: `http://your-public-ip:8000/im/feishu/webhook`
 
 ### Chat with your agent
 
@@ -157,6 +177,34 @@ approval:
 ```
 
 Environment variables are automatically loaded from `.env` in the working directory.
+
+### Feishu Developer Console Setup (WebSocket mode)
+
+1. Go to [Feishu Open Platform](https://open.feishu.cn/app) → your app → **Event Subscriptions**
+2. Enable **"使用长连接接收消息"** (Use long connection to receive messages)
+3. Subscribe to the following events:
+   - `im.message.receive_v1` — receive messages
+   - `p2.card.action.trigger` — card button clicks (optional)
+4. **No Request URL configuration needed** — WebSocket handles everything
+5. Publish the app version to make it active
+
+### Switching between WebSocket and Webhook
+
+| Feature | WebSocket | Webhook |
+|---------|-----------|---------|
+| Public URL required | ❌ No | ✅ Yes |
+| Setup complexity | Low | Medium (need tunnel/proxy) |
+| Real-time cards | ✅ Full support | ✅ Full support |
+| Recommended for | Local dev, personal use | Production server |
+
+To switch modes, update `~/.config/vibebridge/config.yaml`:
+
+```yaml
+feishu:
+  mode: websocket   # or webhook
+```
+
+Then restart the server.
 
 ---
 
