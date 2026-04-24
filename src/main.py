@@ -128,11 +128,18 @@ origins = [
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Static files — serve dashboard assets (animated.html, 3d-office-v2.html, etc.)
+from fastapi.staticfiles import StaticFiles as _StaticFiles
+_dashboard_dir = os.environ.get("MYCOMPANY_DASHBOARD_DIR", "/home/akliedrak/workspace/dashboard")
+if os.path.isdir(_dashboard_dir):
+    app.mount("/dashboard/static", _StaticFiles(directory=_dashboard_dir, html=True), name="dashboard_static")
+    app.mount("/dashboard", _StaticFiles(directory=_dashboard_dir, html=True), name="dashboard")
 
 
 @app.get("/")
@@ -582,6 +589,190 @@ except Exception as e:
 #     print("✅ Approval routes registered (机器人C)")
 # except Exception as e:
 #     print(f"⚠️ Approval routes registration failed: {e}")
+
+
+# ============================================
+# MyCompany Dashboard API
+# ============================================
+
+@app.get("/api/agents")
+def api_agents():
+    """Return agent status."""
+    try:
+        import subprocess
+        result = subprocess.run(
+            ["supervisorctl", "-c", "/home/akliedrak/workspace/MyCompany/.config/supervisor/mycompany.conf", "status"],
+            capture_output=True, text=True, timeout=10,
+        )
+        agents = []
+        for line in result.stdout.strip().split("\n"):
+            parts = line.split(None, 2)
+            if len(parts) >= 2:
+                agents.append({"name": parts[0], "status": parts[1], "info": parts[2] if len(parts) > 2 else ""})
+        return {"agents": agents}
+    except Exception as e:
+        return {"agents": [], "error": str(e)}
+
+
+@app.get("/api/metrics")
+def api_metrics():
+    """Return token usage metrics."""
+    try:
+        import sqlite3
+        from datetime import datetime
+        db = "/home/akliedrak/workspace/MyCompany/.system/metrics.db"
+        conn = sqlite3.connect(db)
+        conn.row_factory = sqlite3.Row
+        today = datetime.now().strftime("%Y-%m-%d")
+        rows = conn.execute(
+            "SELECT agent, COUNT(*) as tasks, SUM(input_tokens) as input, SUM(output_tokens) as output, SUM(duration_seconds) as duration FROM metrics WHERE timestamp LIKE ? GROUP BY agent",
+            (f"{today}%",),
+        ).fetchall()
+        conn.close()
+        return {"metrics": [dict(r) for r in rows], "date": today}
+    except Exception as e:
+        return {"metrics": [], "error": str(e)}
+
+
+@app.get("/compact")
+def compact_dashboard():
+    """Compact real-time dashboard (inline). Full dashboard at /dashboard/animated.html."""
+    html = '''<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MyCompany Dashboard</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',monospace;background:#0d1117;color:#c9d1d9;padding:20px}
+h1{color:#58a6ff;margin-bottom:4px;font-size:20px}
+.sub{color:#8b949e;margin-bottom:16px;font-size:13px}
+.links{margin-bottom:20px;display:flex;gap:12px}
+.links a{color:#58a6ff;text-decoration:none;font-size:13px;padding:6px 14px;background:#161b22;border:1px solid #30363d;border-radius:6px}
+.links a:hover{background:#21262d;border-color:#58a6ff}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px}
+.card{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px}
+.card h3{font-size:14px;margin-bottom:10px;display:flex;justify-content:space-between}
+.card h3 .name{color:#c9d1d9}
+.status-running{color:#3fb950}
+.status-stopped{color:#f85149}
+.row{display:flex;justify-content:space-between;padding:3px 0;font-size:13px}
+.row .label{color:#8b949e}
+.row .value{color:#c9d1d9}
+.bar{height:4px;border-radius:2px;margin-top:8px;background:#21262d}
+.bar-fill{height:100%;border-radius:2px;transition:width .5s}
+.bar-fill.green{background:#3fb950}
+.bar-fill.yellow{background:#d2991d}
+.bar-fill.red{background:#f85149}
+.error{color:#f85149;font-size:12px;padding:8px}
+.summary{grid-column:1/-1;display:flex;gap:20px}
+.summary .stat{text-align:center}
+.summary .stat .num{font-size:28px;font-weight:bold}
+.summary .stat .lbl{font-size:12px;color:#8b949e}
+</style>
+</head>
+<body>
+<div style="display:flex;justify-content:space-between;align-items:center">
+<h1>MyCompany</h1>
+<div class="links">
+  <a href="/compact">Compact</a>
+  <a href="/dashboard/animated.html" target="_blank">Animated</a>
+  <a href="/dashboard/3d-office-v2.html" target="_blank">3D Office</a>
+  <a href="/api/agents" target="_blank">API</a>
+</div>
+</div>
+<p class="sub">Live status &bull; Refresh 5s &bull; <span id="clock">--</span></p>
+
+<div class="summary" id="summary"></div>
+<div class="grid" id="agents"></div>
+
+<script>
+function timeAgo(ts){if(!ts)return"never";const s=(Date.now()-new Date(ts).getTime())/1000;if(s<60)return Math.floor(s)+"s";if(s<3600)return Math.floor(s/60)+"m";return Math.floor(s/3600)+"h"}
+function fmt(n){return n>=1000?(n/1000).toFixed(1)+"k":String(n)}
+
+async function load(){
+  document.getElementById("clock").textContent=new Date().toLocaleTimeString();
+  try{
+    const[a,m,d]=await Promise.all([
+      fetch("/api/agents").then(r=>r.json()),
+      fetch("/api/metrics").then(r=>r.json()),
+      fetch("/_dlq_stats").then(r=>r.json()).catch(()=>({total:0,pending:0}))
+    ]);
+    const agents=a.agents||[],metrics=m.metrics||[];
+    const mm={};metrics.forEach(x=>{mm[x.agent]=x});
+
+    const online=agents.filter(x=>x.status==="RUNNING").length;
+    const totalTasks=metrics.reduce((s,x)=>s+(x.tasks||0),0);
+    const dlq=d.pending||0;
+
+    document.getElementById("summary").innerHTML=
+      `<div class="stat"><div class="num" style="color:#3fb950">${online}</div><div class="lbl">Online</div></div>
+       <div class="stat"><div class="num">${agents.length}</div><div class="lbl">Total</div></div>
+       <div class="stat"><div class="num">${totalTasks}</div><div class="lbl">Tasks</div></div>
+       <div class="stat"><div class="num" style="color:${dlq>0?'#f85149':'#8b949e'}">${dlq}</div><div class="lbl">DLQ</div></div>`;
+
+    document.getElementById("agents").innerHTML=agents.map(a=>{
+      const isRunning=a.status==="RUNNING";
+      const m=mm[a.name.replace(/-agent$/,"")]||{};
+      const tasks=m.tasks||0,inp=m.input||0,out=m.output||0,dur=m.duration||0;
+      return `<div class="card">
+        <h3><span class="name">${a.name}</span><span class="${isRunning?'status-running':'status-stopped'}">${a.status}</span></h3>
+        <div class="row"><span class="label">Tasks</span><span class="value">${tasks}</span></div>
+        <div class="row"><span class="label">Tokens In</span><span class="value">${fmt(inp)}</span></div>
+        <div class="row"><span class="label">Tokens Out</span><span class="value">${fmt(out)}</span></div>
+        <div class="row"><span class="label">Duration</span><span class="value">${Number(dur).toFixed(0)}s</span></div>
+        <div class="bar"><div class="bar-fill ${isRunning?'green':'red'}" style="width:${Math.min(tasks*20,100)}%"></div></div>
+      </div>`;
+    }).join("");
+  }catch(e){
+    document.getElementById("agents").innerHTML=`<div class="card"><p class="error">Connection error: ${e.message}</p></div>`;
+  }
+}
+load();setInterval(load,5000);
+</script>
+</body>
+</html>'''
+    from fastapi.responses import HTMLResponse
+    return HTMLResponse(content=html)
+
+
+@app.get("/api/tasks")
+def api_tasks_list(limit: int = 50):
+    """Return task list from the MyCompany system."""
+    try:
+        import redis
+        r = redis.Redis(
+            host=os.environ.get("MYCOMPANY_REDIS_HOST", "localhost"),
+            port=int(os.environ.get("MYCOMPANY_REDIS_PORT", "6379")),
+            password=os.environ.get("MYCOMPANY_REDIS_PASSWORD", "mycompany2026"),
+            decode_responses=True,
+            socket_connect_timeout=3,
+        )
+        tasks = []
+        for agent_chan in r.pubsub_channels():
+            if agent_chan.startswith(b"task.") or agent_chan.startswith(b"outbox."):
+                tasks.append({"channel": agent_chan.decode()})
+        return {"tasks": tasks[:limit]}
+    except Exception as e:
+        return {"tasks": [], "error": str(e)}
+
+
+@app.get("/_dlq_stats")
+def dlq_stats():
+    """Return dead letter queue stats from MyCompany DB."""
+    try:
+        import sqlite3
+        from pathlib import Path
+        db_path = os.environ.get("MYCOMPANY_HOME", os.path.expanduser("~/workspace/MyCompany")) + "/.system/dead_letter.db"
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        total = conn.execute("SELECT COUNT(*) as c FROM dead_letters").fetchone()["c"]
+        pending = conn.execute("SELECT COUNT(*) as c FROM dead_letters WHERE status='pending'").fetchone()["c"]
+        conn.close()
+        return {"total": total, "pending": pending}
+    except Exception:
+        return {"total": 0, "pending": 0}
 
 
 # ============================================
