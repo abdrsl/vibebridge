@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Agents — MyCompany Admin{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>🤖 Agent Control Panel</h2>
+  <table>
+    <thead>
+      <tr><th>Agent</th><th>Status</th><th>Current Task</th><th>Queue</th><th>Completed</th><th>Failed</th></tr>
+    </thead>
+    <tbody>
+      {% for a in agents %}
+      <tr>
+        <td><strong>{{ a.name }}</strong></td>
+        <td><span class="badge {% if a.running %}badge-ok{% else %}badge-err{% endif %}">{{ "Running" if a.running else "Down" }}</span></td>
+        <td>{{ a.current_task or "—" }}</td>
+        <td>{{ a.queue_size }}</td>
+        <td>{{ a.metrics.tasks_completed if a.metrics else 0 }}</td>
+        <td>{{ a.metrics.tasks_failed if a.metrics else 0 }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

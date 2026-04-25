@@ -104,15 +104,53 @@ async def handle_feishu_message(
     chat_type = message.get("chat_type", "")
     mentions = message.get("mentions", [])
 
+    # MyCompany Agent routing mapping
+    MYCOMPANY_AGENTS = {
+        "software-agent": "task.software-agent",
+        "hardware-agent": "task.hardware-agent",
+        "test-agent": "task.test-agent",
+        "pm-agent": "task.pm-agent",
+        "reviewer-agent": "task.reviewer-agent",
+        "it-ops-agent": "task.it-ops-agent",
+        "ceo-agent": "task.ceo-agent",
+        "structure-agent": "task.structure-agent",
+        "admin-agent": "task.admin-agent",
+        "hr-agent": "task.hr-agent",
+    }
+
     # 如果是群组消息
+    mycompany_agent_routed = False
     if chat_type == "group":
         # 检查是否有机器人提及
         bot_mentioned = False
+        mentioned_name = ""
         for mention in mentions:
             if mention.get("mentioned_type") == "bot":
                 bot_mentioned = True
-                print(f"[Webhook] 机器人被提及: {mention.get('name', 'unknown')}")
+                mentioned_name = mention.get("name", "").lower().replace(" ", "-").replace("_", "-")
+                print(f"[Webhook] 机器人被提及: {mention.get('name', 'unknown')} (normalized: {mentioned_name})")
                 break
+
+        # Check if mentioned bot is a MyCompany agent
+        if bot_mentioned and mentioned_name:
+            agent_channel = MYCOMPANY_AGENTS.get(mentioned_name)
+            if agent_channel:
+                mycompany_agent_routed = True
+                print(f"[Webhook] Routing to MyCompany agent channel: {agent_channel}")
+                background_tasks.add_task(
+                    _route_to_mycompany_agent,
+                    agent_channel,
+                    text,
+                    chat_id,
+                    sender_id,
+                )
+                return {
+                    "ok": True,
+                    "handled": True,
+                    "action": "mycompany_agent_route",
+                    "agent": mentioned_name,
+                    "channel": agent_channel,
+                }
 
         if not bot_mentioned:
             print(
@@ -1837,3 +1875,112 @@ async def handle_card_action(
         return {"ok": False, "error": f"Command not found for action: {action}"}
 
     return {"ok": False, "error": f"Unknown action: {action}", "action": "error"}
+
+
+# ==================================================================== #
+#  MyCompany Agent Integration
+# ==================================================================== #
+
+async def _route_to_mycompany_agent(
+    channel: str,
+    text: str,
+    chat_id: str,
+    sender_id: str,
+) -> None:
+    """Route a Feishu message to a MyCompany agent via Redis.
+
+    The message is published to the agent's task channel. The agent's
+    run_loop will pick it up, process it, and publish the result to
+    its outbox channel.
+    """
+    import json
+    import time
+
+    try:
+        import redis
+        r = redis.Redis(
+            host=os.environ.get("MYCOMPANY_REDIS_HOST", "localhost"),
+            port=int(os.environ.get("MYCOMPANY_REDIS_PORT", "6379")),
+            password=os.environ.get("MYCOMPANY_REDIS_PASSWORD", "mycompany2026"),
+            decode_responses=True,
+        )
+
+        task = {
+            "type": "task",
+            "task_id": f"feishu-{int(time.time() * 1000)}",
+            "from": f"feishu:{sender_id}",
+            "to": channel.replace("task.", ""),
+            "description": text,
+            "chat_id": chat_id,
+            "sender_id": sender_id,
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        }
+
+        r.publish(channel, json.dumps(task, ensure_ascii=False))
+        print(f"[MyCompany] Task published to {channel}: {task['task_id']}")
+
+        # Optional: listen for result on outbox and forward back to Feishu
+        outbox_channel = channel.replace("task.", "outbox.")
+        pubsub = r.pubsub()
+        pubsub.subscribe(outbox_channel)
+
+        # Wait up to 300 seconds for a result
+        timeout_at = time.time() + 300
+        while time.time() < timeout_at:
+            message = pubsub.get_message(timeout=5.0)
+            if message and message.get("type") == "message":
+                try:
+                    result = json.loads(message["data"])
+                    if result.get("task_id") == task["task_id"]:
+                        await _forward_result_to_feishu(result, chat_id)
+                        break
+                except json.JSONDecodeError:
+                    pass
+
+        pubsub.close()
+
+    except Exception as exc:
+        print(f"[MyCompany] Failed to route message: {exc}")
+        # Fallback: write to filesystem inbox
+        try:
+            agent_name = channel.replace("task.", "")
+            import os as _os
+            home = _os.environ.get("MYCOMPANY_HOME", _os.path.expanduser("~/workspace/MyCompany"))
+            inbox_dir = f"{home}/.shared/inbox/{agent_name}"
+            _os.makedirs(inbox_dir, exist_ok=True)
+            task_file = f"{inbox_dir}/{task['task_id']}.md"
+            with open(task_file, "w", encoding="utf-8") as f:
+                f.write(f"---\n")
+                for k, v in task.items():
+                    f.write(f"{k}: {v}\n")
+                f.write(f"---\n\n{text}\n")
+            print(f"[MyCompany] Fallback task written to {task_file}")
+        except Exception as exc2:
+            print(f"[MyCompany] Fallback also failed: {exc2}")
+
+
+async def _forward_result_to_feishu(result: dict, chat_id: str) -> None:
+    """Forward agent result back to Feishu chat."""
+    try:
+        from .feishu_client import feishu_client
+
+        status = result.get("status", "unknown")
+        agent = result.get("agent", "unknown")
+        task_result = result.get("result", {})
+
+        if status == "completed":
+            msg = f"✅ **{agent} 任务完成**\n\n"
+            summary = task_result.get("summary", "")
+            if summary:
+                msg += f"{summary[:500]}\n\n"
+            files = task_result.get("files_created", [])
+            if files:
+                msg += f"**生成文件：**\n" + "\n".join(f"- `{f}`" for f in files[:5])
+        else:
+            error = result.get("error", "未知错误")
+            msg = f"❌ **{agent} 任务失败**\n\n{error[:500]}"
+
+        await feishu_client.send_text_message(chat_id, msg)
+        print(f"[MyCompany] Result forwarded to Feishu chat {chat_id}")
+    except Exception as exc:
+        print(f"[MyCompany] Failed to forward result: {exc}")

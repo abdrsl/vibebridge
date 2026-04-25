@@ -15,6 +15,7 @@ class InboundMessage(BaseModel):
     chat_type: str  # "group" | "p2p"
     is_bot_mentioned: bool
     raw_payload: dict
+    bot_id: str = ""  # Which Feishu bot received this message (app_id)
 
 
 class BaseIMAdapter(Protocol):

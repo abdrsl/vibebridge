@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Keys — MyCompany Admin{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>🔐 API Keys & Secrets</h2>
+  <p style="color:#94a3b8;margin-bottom:12px">Secrets are stored encrypted. Use <code>mycompany config set KEY value</code> to update.</p>
+  <table>
+    <thead><tr><th>Key Name</th><th>Value (masked)</th></tr></thead>
+    <tbody>
+      {% for k in keys %}
+      <tr><td>{{ k.name }}</td><td style="font-family:monospace">{{ k.masked }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

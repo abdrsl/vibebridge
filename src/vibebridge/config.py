@@ -11,15 +11,26 @@ from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class FeishuConfig(BaseModel):
+class FeishuBotConfig(BaseModel):
+    """Configuration for one agent's Feishu bot."""
+    agent: str = ""           # e.g. "software-agent"
     app_id: str = ""
     app_secret: str = ""
+    encrypt_key: str = ""
+    verification_token: str = ""
+    enabled: bool = True
+
+
+class FeishuConfig(BaseModel):
+    app_id: str = ""          # Legacy single-bot fallback
+    app_secret: str = ""      # Legacy single-bot fallback
     encrypt_key: str = ""
     verification_token: str = ""
     mode: str = "websocket"  # "websocket" | "webhook"
     webhook_url: str | None = None  # for webhook mode
     group_allowlist: list[str] = Field(default_factory=list)
     user_allowlist: list[str] = Field(default_factory=list)
+    bots: list[FeishuBotConfig] = Field(default_factory=list)  # Multi-bot config
 
 
 class OpenCodeProviderConfig(BaseModel):

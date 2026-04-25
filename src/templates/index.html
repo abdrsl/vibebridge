@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MyCompany Control Panel</title>
+<style>
+:root{--bg:#0d1117;--card:#161b22;--border:#30363d;--text:#c9d1d9;--dim:#8b949e;--blue:#58a6ff;--green:#3fb950;--red:#f85149}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);display:flex;height:100vh;overflow:hidden}
+.sidebar{width:190px;background:var(--card);border-right:1px solid var(--border);padding:10px;overflow-y:auto;flex-shrink:0}
+.sidebar h2{color:var(--blue);font-size:14px;margin-bottom:10px}
+.sidebar a{display:block;color:var(--dim);text-decoration:none;padding:7px 10px;border-radius:6px;margin-bottom:2px;font-size:12px;cursor:pointer}
+.sidebar a:hover,.sidebar a.active{background:#21262d;color:var(--text)}
+.main{flex:1;padding:20px;overflow-y:auto}
+.tab{display:none}.tab.active{display:block}
+h1{color:var(--blue);font-size:18px;margin-bottom:12px}
+h2{color:var(--dim);font-size:14px;margin:16px 0 8px;border-bottom:1px solid var(--border);padding-bottom:4px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:8px}
+.row{display:flex;justify-content:space-between;align-items:center;padding:4px 0;font-size:12px}.row .l{color:var(--dim);min-width:120px}.row .v{color:var(--text)}
+.badge{font-size:10px;padding:2px 8px;border-radius:10px}.badge.g{background:#1a3a2a;color:var(--green)}.badge.r{background:#3a1a1a;color:var(--red)}.badge.b{background:#1a2a3a;color:var(--blue)}
+button{background:#21262d;border:1px solid var(--border);color:var(--text);padding:5px 12px;border-radius:6px;cursor:pointer;font-size:12px}
+button:hover{background:#30363d}button.g{background:#1a3a2a;border-color:#238636;color:var(--green)}button.r{background:#3a1a1a;border-color:#da3633;color:var(--red)}
+input,select,textarea{background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:12px;width:100%}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--blue)}
+textarea{resize:vertical;min-height:50px}
+.flex{display:flex;gap:8px;align-items:center}.mt{margin-top:8px}
+.chat-box{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;min-height:250px;max-height:400px;overflow-y:auto;font-size:12px}
+.chat-msg{margin-bottom:8px}.chat-msg .s{font-weight:bold;font-size:11px}.chat-msg .s.a{color:var(--green)}.chat-msg .s.u{color:var(--blue)}.chat-msg .b{color:var(--text);margin-top:2px;white-space:pre-wrap}
+.agent-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}
+.agent-card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px;cursor:pointer;transition:all .2s}
+.agent-card:hover{border-color:var(--blue)}.dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px}.dot.on{background:var(--green)}.dot.off{background:var(--red)}
+.status-bar{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 14px;margin-bottom:12px;display:flex;gap:20px;font-size:12px}
+.toast{position:fixed;bottom:20px;right:20px;background:#238636;color:#fff;padding:8px 16px;border-radius:8px;font-size:12px;opacity:0;transition:opacity .3s;z-index:999}
+pre{background:var(--bg);padding:10px;border-radius:6px;font-size:11px;max-height:300px;overflow-y:auto;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<div class="sidebar">
+<h2>🏢 MyCompany</h2>
+<a class="active" onclick="tab('dash')">📊 Dashboard</a>
+<a onclick="tab('chat')">💬 Chat</a>
+<a onclick="tab('config')">⚙️ Config</a>
+<a onclick="tab('sessions')">📋 Sessions</a>
+<a onclick="tab('health')">🏥 Health</a>
+</div>
+
+<div class="main">
+<div class="tab active" id="tab-dash"><h1>📊 Dashboard</h1>
+<div class="status-bar" id="status-bar">Loading...</div>
+<div class="agent-grid" id="agent-grid">Loading...</div>
+<div class="card mt"><h2>💰 Token Usage (Today)</h2><div id="token-table">Loading...</div></div>
+</div>
+
+<div class="tab" id="tab-chat"><h1>💬 Chat with Agent</h1>
+<div class="card"><div class="flex"><b>Agent:</b><select id="chat-agent" style="width:200px"></select></div>
+<div class="chat-box mt" id="chat-box"><div style="color:var(--dim)">Select agent and type message...</div></div>
+<div class="flex mt"><input id="chat-input" placeholder="Message (Enter to send)" onkeydown="if(event.key==='Enter')chatSend()"><button class="g" onclick="chatSend()">Send</button></div></div>
+</div>
+
+<div class="tab" id="tab-config"><h1>⚙️ Configuration</h1>
+<h2>🔐 API Keys</h2><div class="card" id="config-keys">Loading...</div>
+<h2>🤖 Feishu Bots (per agent)</h2><div class="card" id="config-bots">Loading...</div>
+<h2>🧠 Model Settings</h2><div class="card"><div class="row"><span class="l">Primary</span><span class="v">moonshot/kimi-k2.5</span></div><div class="row"><span class="l">Fallback</span><span class="v">deepseek/deepseek-chat</span></div><div class="row"><span class="l">Daily Budget</span><span class="v">¥50 per agent</span></div></div>
+</div>
+
+<div class="tab" id="tab-sessions"><h1>📋 Agent Sessions</h1>
+<div class="card"><div class="flex"><b>Agent:</b><select id="session-agent" onchange="loadSessions()" style="width:200px"></select></div>
+<pre id="session-list" class="mt">Select agent...</pre></div>
+</div>
+
+<div class="tab" id="tab-health"><h1>🏥 System Health</h1>
+<div class="card" id="health-checks">Loading...</div></div>
+</div>
+
+<div class="toast" id="toast"></div>
+<script>
+let agents=[];
+function T(m){let t=document.getElementById('toast');t.textContent=m;t.style.opacity=1;setTimeout(()=>t.style.opacity=0,2000)}
+function tab(name){
+ document.querySelectorAll('.tab').forEach(e=>e.classList.remove('active'));
+ document.querySelectorAll('.sidebar a').forEach(e=>e.classList.remove('active'));
+ document.getElementById('tab-'+name).classList.add('active');
+ event.target.classList.add('active');
+ if(name==='dash')loadDash();if(name==='chat')loadChatForm();
+ if(name==='config')loadConfig();if(name==='sessions')loadSessionForm();
+ if(name==='health')loadHealth();
+}
+async function api(url,o){try{let r=await fetch(url,o||{});return await r.json()}catch(e){return{}}}
+// DASHBOARD
+async function loadDash(){
+ let a=await api('/api/agents');agents=a.agents||[];
+ let on=agents.filter(x=>x.status==='RUNNING').length;
+ document.getElementById('status-bar').innerHTML='<span>🟢 <b>'+on+'</b> / '+agents.length+' Online</span><span>🤖 '+agents.length+' Agents</span><span>🔀 Coordinator</span>';
+ document.getElementById('agent-grid').innerHTML=agents.map(x=>'<div class="agent-card" onclick="selChat(\''+x.name+'\')"><span class="dot '+(x.status==='RUNNING'?'on':'off')+'"></span><b>'+x.name+'</b><br><small style="color:var(--dim)">'+x.status+'</small></div>').join('');
+ let m=await api('/api/metrics');let rows=m.metrics||[];
+ document.getElementById('token-table').innerHTML=rows.length?rows.map(r=>'<div class="row"><span class="l">'+(r.agent||'?')+'</span><span class="v">Tasks:'+(r.tasks||0)+' | In:'+((r.input||0)/1000).toFixed(1)+'K | Out:'+((r.output||0)/1000).toFixed(1)+'K | ¥'+(((r.input||0)+(r.output||0))/1000*0.005).toFixed(2)+'</span></div>').join(''):'<div style="color:var(--dim)">No data. Send tasks to see usage.</div>';
+}
+function selChat(name){document.getElementById('chat-agent').value=name;tab('chat')}
+// CHAT
+async function loadChatForm(){if(!agents.length){let a=await api('/api/agents');agents=a.agents||[]}document.getElementById('chat-agent').innerHTML=agents.map(x=>'<option value="'+x.name+'">'+x.name+'</option>').join('')}
+async function chatSend(){
+ let a=document.getElementById('chat-agent').value,m=document.getElementById('chat-input').value;if(!m)return;
+ document.getElementById('chat-input').value='';
+ let b=document.getElementById('chat-box');b.innerHTML+='<div class="chat-msg"><span class="s u">You → '+a+'</span><div class="b">'+m+'</div></div>';
+ b.innerHTML+='<div class="chat-msg"><span class="s a">'+a+' typing...</span></div>';b.scrollTop=b.scrollHeight;
+ let r=await api('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({agent:a,message:m})});
+ b.innerHTML=b.innerHTML.replace(a+' typing...',a+' replied');
+ b.innerHTML+='<div class="chat-msg"><span class="s a">🤖 '+a+'</span><div class="b">'+(r.reply||'No response')+'</div></div>';b.scrollTop=b.scrollHeight;
+}
+// CONFIG
+async function loadConfig(){
+ let c=await api('/api/config');let s=c.secrets||[],bots=c.bots||[];
+ document.getElementById('config-keys').innerHTML=s.length?s.map(x=>'<div class="row"><span class="l">'+x.name+'</span><span class="v">'+x.masked+'</span></div>').join(''):'<div style="color:var(--dim)">Run: mycompany setup</div>';
+ document.getElementById('config-bots').innerHTML=bots.map(x=>'<div class="row"><span class="l">'+x.agent+'</span><span class="v">'+x.bot_name+'</span><span class="badge '+(x.enabled?'g':'r')+'">'+(x.enabled?'on':'off')+'</span></div>').join('');
+}
+// SESSIONS
+async function loadSessionForm(){if(!agents.length){let a=await api('/api/agents');agents=a.agents||[]}document.getElementById('session-agent').innerHTML=agents.map(x=>'<option value="'+x.name+'">'+x.name+'</option>').join('')}
+async function loadSessions(){
+ let a=document.getElementById('session-agent').value;
+ let m=await api('/api/metrics');
+ document.getElementById('session-list').textContent=JSON.stringify({agent:a,sessions:'SessionManager (24h TTL Redis)',context:'Isolated per agent+chat',mode:'Webhook (WebSocket disabled)'},null,2);
+}
+// HEALTH
+async function loadHealth(){
+ let h=await api('/health');
+ let c=h.checks||{};
+ document.getElementById('health-checks').innerHTML=
+  '<div class="row"><span class="l">VibeBridge</span><span class="badge '+(h.ok?'g':'r')+'">'+(h.ok?'OK':'DOWN')+'</span></div>'
+  +'<div class="row"><span class="l">Redis</span><span class="badge '+(c.redis==='ok'?'g':'r')+'">'+(c.redis||'?')+'</span></div>'
+  +'<div class="row"><span class="l">Agents</span><span class="badge g">'+(c.agents||'?')+'</span></div>'
+  +'<div class="row"><span class="l">Disk</span><span class="badge '+(c.disk_gb>5?'g':'r')+'">'+(c.disk_gb||'?')+' GB</span></div>';
+}
+loadDash();
+</script>
+</body>
+</html>

@@ -73,19 +73,10 @@ async def lifespan(app: FastAPI):
         print(f"[System] Error starting multi-agent system: {e}")
         # Continue without multi-agent system
 
-    # 启动Feishu WebSocket客户端（如果启用）
+    # 启动Feishu WebSocket客户端（Feishu WebSocket disabled — webhook only）
     websocket_client = None
-    if FEISHU_WEBSOCKET_AVAILABLE and start_feishu_websocket:
-        try:
-            websocket_client = await start_feishu_websocket()
-            if websocket_client:
-                print("[WebSocket] Feishu WebSocket客户端已启动")
-            else:
-                print("[WebSocket] Feishu WebSocket客户端未启用或启动失败")
-        except Exception as e:
-            print(f"[WebSocket] 启动Feishu WebSocket客户端时出错: {e}")
-    elif FEISHU_WEBSOCKET_AVAILABLE:
-        print("[WebSocket] WebSocket模块已加载但start_feishu_websocket函数不可用")
+    print("[WebSocket] Using webhook mode (WebSocket disabled)")
+    # To enable WebSocket: set FEISHU_WEBSOCKET_ENABLED=true and valid credentials
 
     yield
 
@@ -143,28 +134,47 @@ if os.path.isdir(_dashboard_dir):
 
 
 @app.get("/")
-@limiter.exempt
-def root():
-    """Root endpoint."""
-    return {
-        "name": "OpenCode-Feishu Bridge",
-        "version": "1.0.0",
-        "status": "ok",
-        "architecture": "multi-agent",
-        "agents": 6,
-    }
-
-
+def root_page():
+    """Unified Web UI — single page with all controls."""
+    from src.template_loader import serve_webui
+    return serve_webui()
 @app.get("/health")
 @limiter.exempt
 def health():
-    """Health check endpoint."""
+    """Enhanced health check — full system status."""
+    import subprocess as sp
     system = get_system()
-    return {
+    status = {
         "ok": True,
         "timestamp": time.time(),
         "multi_agent_system": system.is_running() if system else False,
+        "checks": {},
     }
+    # Check Redis
+    try:
+        import redis as _r
+        rd = _r.Redis(host="localhost", port=6379, password="mycompany2026", socket_timeout=2)
+        status["checks"]["redis"] = "ok" if rd.ping() else "fail"
+    except Exception:
+        status["checks"]["redis"] = "fail"
+    # Check agents
+    try:
+        ra = sp.run(["supervisorctl", "-c",
+            "/home/akliedrak/workspace/MyCompany/.config/supervisor/mycompany.conf", "status"],
+            capture_output=True, text=True, timeout=5)
+        running = ra.stdout.count("RUNNING")
+        total = max(ra.stdout.count("\n"), 1)
+        status["checks"]["agents"] = f"{running}/{total}"
+        if running < 8: status["ok"] = False
+    except Exception:
+        status["checks"]["agents"] = "unknown"
+    # Check disk
+    import os
+    stat = os.statvfs("/home/akliedrak/workspace/MyCompany")
+    free_gb = stat.f_bavail * stat.f_frsize / (1024**3)
+    status["checks"]["disk_gb"] = round(free_gb, 1)
+    if free_gb < 1: status["ok"] = False
+    return status
 
 
 @app.get("/system/status")
@@ -597,7 +607,7 @@ except Exception as e:
 
 @app.get("/api/agents")
 def api_agents():
-    """Return agent status."""
+    """Return agent status (clean names, no mycompany: prefix)."""
     try:
         import subprocess
         result = subprocess.run(
@@ -608,8 +618,9 @@ def api_agents():
         for line in result.stdout.strip().split("\n"):
             parts = line.split(None, 2)
             if len(parts) >= 2:
-                agents.append({"name": parts[0], "status": parts[1], "info": parts[2] if len(parts) > 2 else ""})
-        return {"agents": agents}
+                name = parts[0].replace("mycompany:", "")  # strip prefix
+                agents.append({"name": name, "status": parts[1], "info": parts[2] if len(parts) > 2 else ""})
+        return {"agents": agents, "total": len(agents)}
     except Exception as e:
         return {"agents": [], "error": str(e)}
 
@@ -636,153 +647,42 @@ def api_metrics():
 
 @app.get("/compact")
 def compact_dashboard():
-    """Compact real-time dashboard (inline). Full dashboard at /dashboard/animated.html."""
-    html = '''<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>MyCompany Dashboard</title>
-<style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',monospace;background:#0d1117;color:#c9d1d9;padding:20px}
-h1{color:#58a6ff;margin-bottom:4px;font-size:20px}
-.sub{color:#8b949e;margin-bottom:16px;font-size:13px}
-.links{margin-bottom:20px;display:flex;gap:12px}
-.links a{color:#58a6ff;text-decoration:none;font-size:13px;padding:6px 14px;background:#161b22;border:1px solid #30363d;border-radius:6px}
-.links a:hover{background:#21262d;border-color:#58a6ff}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px}
-.card{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px}
-.card h3{font-size:14px;margin-bottom:10px;display:flex;justify-content:space-between}
-.card h3 .name{color:#c9d1d9}
-.status-running{color:#3fb950}
-.status-stopped{color:#f85149}
-.row{display:flex;justify-content:space-between;padding:3px 0;font-size:13px}
-.row .label{color:#8b949e}
-.row .value{color:#c9d1d9}
-.bar{height:4px;border-radius:2px;margin-top:8px;background:#21262d}
-.bar-fill{height:100%;border-radius:2px;transition:width .5s}
-.bar-fill.green{background:#3fb950}
-.bar-fill.yellow{background:#d2991d}
-.bar-fill.red{background:#f85149}
-.error{color:#f85149;font-size:12px;padding:8px}
-.summary{grid-column:1/-1;display:flex;gap:20px}
-.summary .stat{text-align:center}
-.summary .stat .num{font-size:28px;font-weight:bold}
-.summary .stat .lbl{font-size:12px;color:#8b949e}
-</style>
-</head>
-<body>
-<div style="display:flex;justify-content:space-between;align-items:center">
-<h1>MyCompany</h1>
-<div class="links">
-  <a href="/compact">Compact</a>
-  <a href="/dashboard/animated.html" target="_blank">Animated</a>
-  <a href="/dashboard/3d-office-v2.html" target="_blank">3D Office</a>
-  <a href="/api/agents" target="_blank">API</a>
-</div>
-</div>
-<p class="sub">Live status &bull; Refresh 5s &bull; <span id="clock">--</span></p>
+    """Redirect to unified WebUI."""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/")
 
-<div class="summary" id="summary"></div>
-<div class="grid" id="agents"></div>
-
-<script>
-function timeAgo(ts){if(!ts)return"never";const s=(Date.now()-new Date(ts).getTime())/1000;if(s<60)return Math.floor(s)+"s";if(s<3600)return Math.floor(s/60)+"m";return Math.floor(s/3600)+"h"}
-function fmt(n){return n>=1000?(n/1000).toFixed(1)+"k":String(n)}
-
-async function load(){
-  document.getElementById("clock").textContent=new Date().toLocaleTimeString();
-  try{
-    const[a,m,d]=await Promise.all([
-      fetch("/api/agents").then(r=>r.json()),
-      fetch("/api/metrics").then(r=>r.json()),
-      fetch("/_dlq_stats").then(r=>r.json()).catch(()=>({total:0,pending:0}))
-    ]);
-    const agents=a.agents||[],metrics=m.metrics||[];
-    const mm={};metrics.forEach(x=>{mm[x.agent]=x});
-
-    const online=agents.filter(x=>x.status==="RUNNING").length;
-    const totalTasks=metrics.reduce((s,x)=>s+(x.tasks||0),0);
-    const dlq=d.pending||0;
-
-    document.getElementById("summary").innerHTML=
-      `<div class="stat"><div class="num" style="color:#3fb950">${online}</div><div class="lbl">Online</div></div>
-       <div class="stat"><div class="num">${agents.length}</div><div class="lbl">Total</div></div>
-       <div class="stat"><div class="num">${totalTasks}</div><div class="lbl">Tasks</div></div>
-       <div class="stat"><div class="num" style="color:${dlq>0?'#f85149':'#8b949e'}">${dlq}</div><div class="lbl">DLQ</div></div>`;
-
-    document.getElementById("agents").innerHTML=agents.map(a=>{
-      const isRunning=a.status==="RUNNING";
-      const m=mm[a.name.replace(/-agent$/,"")]||{};
-      const tasks=m.tasks||0,inp=m.input||0,out=m.output||0,dur=m.duration||0;
-      return `<div class="card">
-        <h3><span class="name">${a.name}</span><span class="${isRunning?'status-running':'status-stopped'}">${a.status}</span></h3>
-        <div class="row"><span class="label">Tasks</span><span class="value">${tasks}</span></div>
-        <div class="row"><span class="label">Tokens In</span><span class="value">${fmt(inp)}</span></div>
-        <div class="row"><span class="label">Tokens Out</span><span class="value">${fmt(out)}</span></div>
-        <div class="row"><span class="label">Duration</span><span class="value">${Number(dur).toFixed(0)}s</span></div>
-        <div class="bar"><div class="bar-fill ${isRunning?'green':'red'}" style="width:${Math.min(tasks*20,100)}%"></div></div>
-      </div>`;
-    }).join("");
-  }catch(e){
-    document.getElementById("agents").innerHTML=`<div class="card"><p class="error">Connection error: ${e.message}</p></div>`;
-  }
-}
-load();setInterval(load,5000);
-</script>
-</body>
-</html>'''
-    from fastapi.responses import HTMLResponse
-    return HTMLResponse(content=html)
-
-
-@app.get("/api/tasks")
-def api_tasks_list(limit: int = 50):
-    """Return task list from the MyCompany system."""
+@app.post("/api/chat")
+def api_chat(body: dict):
+    """Send chat to agent, wait for response."""
+    agent = body.get("agent", "pm-agent")
+    msg = body.get("message", "")
+    if not msg: return {"ok": False, "error": "message required"}
+    import time as _t
+    tid = f"webui-{int(_t.time()*1000)}"
+    task = {"type":"task","task_id":tid,"from":"webui","to":agent,"description":msg,"priority":0}
     try:
-        import redis
-        r = redis.Redis(
-            host=os.environ.get("MYCOMPANY_REDIS_HOST", "localhost"),
-            port=int(os.environ.get("MYCOMPANY_REDIS_PORT", "6379")),
-            password=os.environ.get("MYCOMPANY_REDIS_PASSWORD", "mycompany2026"),
-            decode_responses=True,
-            socket_connect_timeout=3,
-        )
-        tasks = []
-        for agent_chan in r.pubsub_channels():
-            if agent_chan.startswith(b"task.") or agent_chan.startswith(b"outbox."):
-                tasks.append({"channel": agent_chan.decode()})
-        return {"tasks": tasks[:limit]}
+        import redis as _r
+        rd = _r.Redis(host="localhost",port=6379,password="mycompany2026",socket_timeout=3,decode_responses=True)
+        rd.publish(f"task.{agent}", json.dumps(task,ensure_ascii=False))
+        pubsub = rd.pubsub(); pubsub.subscribe(f"outbox.{agent}")
+        deadline = _t.time() + 40
+        while _t.time() < deadline:
+            m = pubsub.get_message(timeout=2.0)
+            if m and m.get("type") == "message":
+                d = json.loads(m["data"])
+                if d.get("task_id") == tid:
+                    pubsub.close()
+                    r = d.get("result",{})
+                    return {"ok":True,"agent":agent,"status":d.get("status"),"reply":str(r.get("response",r.get("summary",r)))[:2000]}
+        pubsub.close()
+        return {"ok":True,"agent":agent,"status":"pending","reply":"Agent thinking..."}
     except Exception as e:
-        return {"tasks": [], "error": str(e)}
+        return {"ok":False,"error":str(e)}
 
 
-@app.get("/_dlq_stats")
-def dlq_stats():
-    """Return dead letter queue stats from MyCompany DB."""
-    try:
-        import sqlite3
-        from pathlib import Path
-        db_path = os.environ.get("MYCOMPANY_HOME", os.path.expanduser("~/workspace/MyCompany")) + "/.system/dead_letter.db"
-        conn = sqlite3.connect(db_path)
-        conn.row_factory = sqlite3.Row
-        total = conn.execute("SELECT COUNT(*) as c FROM dead_letters").fetchone()["c"]
-        pending = conn.execute("SELECT COUNT(*) as c FROM dead_letters WHERE status='pending'").fetchone()["c"]
-        conn.close()
-        return {"total": total, "pending": pending}
-    except Exception:
-        return {"total": 0, "pending": 0}
-
-
-# ============================================
-# Server Startup
-# ============================================
 if __name__ == "__main__":
     import os
-
     import uvicorn
-
     port = int(os.getenv("PORT", "8000"))
     print(f"🚀 Starting server on port {port}...")
     uvicorn.run(app, host="0.0.0.0", port=port)

@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Bots — MyCompany Admin{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>🤖 Feishu Bot Registry</h2>
+  <p style="color:#94a3b8;margin-bottom:12px">Each agent has its own Feishu bot. Configure via <code>mycompany bot register &lt;agent&gt;</code> or <code>mycompany bot wizard</code>.</p>
+  <table>
+    <thead>
+      <tr><th>Agent</th><th>Bot Name</th><th>App ID</th><th>Keywords</th><th>Status</th><th>Action</th></tr>
+    </thead>
+    <tbody>
+      {% for b in bots %}
+      <tr>
+        <td><strong>{{ b.agent }}</strong></td>
+        <td>{{ b.bot_name }}</td>
+        <td style="font-family:monospace">{{ b.app_id or "—" }}</td>
+        <td>{{ b.keywords|join(", ") or "—" }}</td>
+        <td><span class="badge {% if b.enabled %}badge-ok{% else %}badge-err{% endif %}">{{ "Enabled" if b.enabled else "Disabled" }}</span></td>
+        <td>
+          <button hx-post="/admin/bots/{{ b.agent }}/toggle" hx-swap="none" onclick="setTimeout(()=>location.reload(),300)">
+            {{ "Disable" if b.enabled else "Enable" }}
+          </button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

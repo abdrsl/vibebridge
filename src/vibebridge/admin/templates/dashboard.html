@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — MyCompany Admin{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>📊 System Overview</h2>
+  <div class="grid" hx-get="/admin/api/status" hx-trigger="every 5s" hx-swap="innerHTML" hx-target="#stats-grid">
+    <div id="stats-grid">
+      <div class="stat"><div class="value ok">{{ stats.feishu_bots }}</div><div class="label">Feishu Bots</div></div>
+      <div class="stat"><div class="value ok">{{ stats.agents_online }}</div><div class="label">Agents Online</div></div>
+      <div class="stat"><div class="value {% if stats.redis_connected %}ok{% else %}err{% endif %}">●</div><div class="label">Redis</div></div>
+      <div class="stat"><div class="value">{{ stats.providers|length }}</div><div class="label">Providers</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>🔌 Providers</h2>
+  <table>
+    <thead><tr><th>Name</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for p in stats.providers %}
+      <tr><td>{{ p.name }}</td><td><span class="badge {% if p.healthy %}badge-ok{% else %}badge-err{% endif %}">{{ "Healthy" if p.healthy else "Down" }}</span></td></tr>
+      {% else %}
+      <tr><td colspan="2" style="color:#94a3b8">No provider data</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h2>⚡ Quick Actions</h2>
+  <div style="display:flex;gap:12px;flex-wrap:wrap;">
+    <button onclick="fetch('/admin/api/reload-config',{method:'POST'}).then(r=>alert('Config reloaded'))">Reload Config</button>
+    <a href="/dashboard" target="_blank"><button>Metrics Dashboard</button></a>
+    <a href="/docs" target="_blank"><button>API Docs</button></a>
+  </div>
+</div>
+{% endblock %}
