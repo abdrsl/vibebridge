@@ -11,6 +11,9 @@ import requests
 webhook_url = "http://localhost:8000/feishu/webhook/opencode"
 
 
+import pytest
+
+@pytest.mark.skip(reason="Manual test script - requires running server and command fixture")
 def test_command(command):
     """测试单个命令"""
     message_id = f"om_test_{int(time.time())}"
