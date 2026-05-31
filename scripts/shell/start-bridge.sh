@@ -20,45 +20,8 @@ fi
 
 # 加载 API Keys
 echo "📡 加载 API Keys..."
-AUTH_FILE="$HOME/.openclaw/agents/main/agent/auth-profiles.json"
-
-if [ -f "$AUTH_FILE" ]; then
-    export MOONSHOT_API_KEY=$(python3 -c "import json; print(json.load(open('$AUTH_FILE')).get('moonshot', {}).get('apiKey', ''))" 2>/dev/null)
-    export OPENROUTER_API_KEY=$(python3 -c "import json; print(json.load(open('$AUTH_FILE')).get('openrouter', {}).get('apiKey', ''))" 2>/dev/null)
-    export DEEPSEEK_API_KEY=$(python3 -c "import json; print(json.load(open('$AUTH_FILE')).get('deepseek', {}).get('apiKey', ''))" 2>/dev/null)
-    echo "✅ API Keys 已从 OpenClaw 配置加载"
-else
-    echo "⚠️  未找到 OpenClaw 配置，使用环境变量"
-fi
-
-# 检查 Gateway 状态
-echo ""
-echo "📡 检查 OpenClaw Gateway..."
-MAX_RETRIES=3
-RETRY_COUNT=0
-
-while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-    if curl -s http://127.0.0.1:18789/health | grep -q '"ok":true'; then
-        echo "✅ Gateway 运行正常"
-        break
-    else
-        RETRY_COUNT=$((RETRY_COUNT + 1))
-        if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
-            echo "⚠️  Gateway 未响应，尝试启动..."
-            systemctl --user start openclaw-gateway
-            sleep 5
-            
-            if curl -s http://127.0.0.1:18789/health | grep -q '"ok":true'; then
-                echo "✅ Gateway 启动成功"
-            else
-                echo "❌ Gateway 启动失败，Bridge 可能无法正常工作"
-            fi
-        else
-            echo "  重试 $RETRY_COUNT/$MAX_RETRIES..."
-            sleep 2
-        fi
-    fi
-done
+# API keys are loaded from environment or .env file by the application
+echo "✅ 使用环境变量和 .env 文件加载 API Keys"
 
 # 激活虚拟环境并启动 Bridge
 echo ""

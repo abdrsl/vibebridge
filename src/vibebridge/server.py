@@ -17,8 +17,7 @@ from .router import ProviderRouter
 from .session import get_session_manager
 from .tasks import ApprovalEngine, TaskOrchestrator
 from .agent_bridge import AgentResultBridge, AgentTaskDispatcher, AutoReviewRouter
-
-from mycompany.core.tracing import trace_span
+from .ws_client import FeishuWebSocketClient
 
 
 @asynccontextmanager
@@ -40,27 +39,20 @@ async def lifespan(app: FastAPI):
 
     # ── Feishu Multi-Bot Setup ──────────────────────────────────────
     feishu_bots: list[FeishuBotCredentials] = []
-    try:
-        from mycompany.config.bots import BotRegistry
-        registry = BotRegistry()
-        for bot_cfg in registry.list_all():
-            if bot_cfg.enabled and bot_cfg.app_id:
-                # Load secret from SecretsManager
-                from mycompany.config.secrets import SecretsManager
-                sm = SecretsManager()
-                prefix = f"FEISHU_{bot_cfg.agent.replace('-', '_').upper()}"
-                secret = sm.get(f"{prefix}_APP_SECRET") or ""
-                if secret:
-                    feishu_bots.append(FeishuBotCredentials(
-                        agent=bot_cfg.agent,
-                        app_id=bot_cfg.app_id,
-                        app_secret=secret,
-                        encrypt_key=bot_cfg.encrypt_key or "",
-                        verification_token=bot_cfg.verify_token or "",
-                    ))
-        print(f"[VibeBridge] Loaded {len(feishu_bots)} Feishu bots from BotRegistry")
-    except Exception as e:
-        print(f"[VibeBridge] BotRegistry not available: {e}")
+
+    # Load bots from config (YAML or env)
+    for bot_cfg in cfg.feishu.bots:
+        if bot_cfg.enabled and bot_cfg.app_id:
+            secret = bot_cfg.app_secret
+            if secret:
+                feishu_bots.append(FeishuBotCredentials(
+                    agent=bot_cfg.agent,
+                    app_id=bot_cfg.app_id,
+                    app_secret=secret,
+                    encrypt_key=bot_cfg.encrypt_key or "",
+                    verification_token=bot_cfg.verification_token or "",
+                ))
+    print(f"[VibeBridge] Loaded {len(feishu_bots)} Feishu bots from config")
 
     # Fallback to legacy single-bot config
     if not feishu_bots and cfg.feishu.app_id and cfg.feishu.app_secret:
@@ -79,45 +71,25 @@ async def lifespan(app: FastAPI):
     redis_client = None
     agent_bridge = None
     agent_dispatcher = None
-    try:
-        import redis as _redis_lib
-        from mycompany.core.config_manager import get_config as _get_mc_config
-        rcfg = _get_mc_config().redis
-        redis_client = _redis_lib.Redis(
-            host=rcfg.host, port=rcfg.port,
-            password=rcfg.password, decode_responses=True,
-        )
-        agent_bridge = AgentResultBridge(redis_client, im_adapter)
-        agent_bridge.start()
-        agent_dispatcher = AgentTaskDispatcher(redis_client)
-        auto_review = AutoReviewRouter(redis_client)
-        auto_review.start()
-        print("[VibeBridge] AgentBridge + AutoReview connected to Redis")
-    except Exception as e:
-        print(f"[VibeBridge] AgentBridge not available: {e}")
-        auto_review = None
-
-    # ── Autonomous Trigger: 7×24 self-triggered tasks ─────────────
-    auto_trigger = None
-    try:
-        from mycompany.core.autonomous_trigger import AutonomousTrigger
-        if redis_client:
-            auto_trigger = AutonomousTrigger(redis_client)
-            auto_trigger.start()
-            print(f"[VibeBridge] AutonomousTrigger started with {len(auto_trigger.list_triggers())} triggers")
-    except Exception as e:
-        print(f"[VibeBridge] AutonomousTrigger not available: {e}")
-
-    # ── Workflow Engine: multi-agent pipeline orchestration ─────────
-    workflow_engine = None
-    try:
-        from mycompany.core.workflow_engine import WorkflowEngine
-        if redis_client:
-            workflow_engine = WorkflowEngine(redis_client)
-            workflow_engine.start_listener()
-            print("[VibeBridge] WorkflowEngine listener started")
-    except Exception as e:
-        print(f"[VibeBridge] WorkflowEngine not available: {e}")
+    auto_review = None
+    if cfg.redis.enabled:
+        try:
+            import redis as _redis_lib
+            redis_client = _redis_lib.Redis(
+                host=cfg.redis.host, port=cfg.redis.port,
+                password=cfg.redis.password or None,
+                decode_responses=True,
+            )
+            agent_bridge = AgentResultBridge(redis_client, im_adapter)
+            agent_bridge.start()
+            agent_dispatcher = AgentTaskDispatcher(redis_client)
+            auto_review = AutoReviewRouter(redis_client)
+            auto_review.start()
+            print("[VibeBridge] AgentBridge + AutoReview connected to Redis")
+        except Exception as e:
+            print(f"[VibeBridge] AgentBridge not available: {e}")
+    else:
+        print("[VibeBridge] Redis disabled — AgentBridge not started")
 
     app.state.cfg = cfg
     app.state.providers = providers
@@ -128,39 +100,54 @@ async def lifespan(app: FastAPI):
     app.state.agent_bridge = agent_bridge
     app.state.agent_dispatcher = agent_dispatcher
     app.state.auto_review = auto_review
-    app.state.auto_trigger = auto_trigger
-    app.state.workflow_engine = workflow_engine
     app.state.feishu_bots = feishu_bots
+
+    # ── Feishu WebSocket Long Connection ──────────────────────────
+    ws_clients = []
+    ws_mode = cfg.feishu.mode or "webhook"
+    if ws_mode == "websocket":
+        for bot_creds in feishu_bots:
+            try:
+                ws = FeishuWebSocketClient(
+                    app_id=bot_creds.app_id,
+                    app_secret=bot_creds.app_secret,
+                    webhook_url="http://127.0.0.1:8000/feishu/webhook",
+                )
+                await ws.start()
+                ws_clients.append(ws)
+                print(f"[VibeBridge] WebSocket started for {bot_creds.agent}")
+            except Exception as e:
+                print(f"[VibeBridge] WebSocket failed for {bot_creds.agent}: {e}")
+        if ws_clients:
+            print(f"[VibeBridge] {len(ws_clients)} WebSocket client(s) connected")
+    else:
+        print("[VibeBridge] Webhook mode — no WebSocket clients started")
 
     yield
 
     print("[VibeBridge] Shutting down...")
-    if auto_trigger:
-        auto_trigger.stop()
+    for ws in ws_clients:
+        try:
+            await ws.stop()
+        except Exception:
+            pass
     if agent_bridge:
         agent_bridge.stop()
     if auto_review:
         auto_review.stop()
-    if workflow_engine:
-        workflow_engine.stop()
 
 
 # --------------------------------------------------------------------------- #
-#  API Key auth for enterprise dashboard endpoints
+#  API Key auth for dashboard endpoints
 # --------------------------------------------------------------------------- #
 
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
 def _load_dashboard_api_key() -> str | None:
-    try:
-        import os, sys
-        mycompany_src = os.environ.get("MYCOMPANY_HOME", os.path.expanduser("~/workspace/MyCompany"))
-        sys.path.insert(0, os.path.join(mycompany_src, "src"))
-        from mycompany.core.config_manager import ConfigManager
-        return ConfigManager.get_secret("system.api_key")
-    except Exception:
-        return None
+    """Load dashboard API key from environment or config."""
+    import os
+    return os.getenv("VIBEBRIDGE_API_KEY") or os.getenv("DASHBOARD_API_KEY")
 
 
 async def verify_api_key(api_key: str | None = Depends(api_key_header)) -> None:
@@ -195,7 +182,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
 app = FastAPI(
     title="VibeBridge",
-    version="1.1.0",
+    version="1.2.0",
     description="Universal IM gateway for local AI coding agents",
     lifespan=lifespan,
 )
@@ -210,7 +197,7 @@ app.include_router(admin_router)
 def root():
     return {
         "name": "VibeBridge",
-        "version": "1.1.0",
+        "version": "1.2.0",
         "status": "ok",
     }
 
@@ -222,18 +209,17 @@ async def liveness():
 
 
 @app.get("/ready")
-async def readiness():
-    """Kubernetes readiness probe — checks Redis connectivity."""
+async def readiness(request: Request):
+    """Kubernetes readiness probe — checks Redis connectivity if enabled."""
+    cfg: "Config" = request.app.state.cfg  # noqa: F821
+    if not cfg.redis.enabled:
+        return {"status": "ready", "redis": "disabled"}
     try:
-        import sys, os
-        mycompany_src = os.environ.get("MYCOMPANY_HOME", os.path.expanduser("~/workspace/MyCompany"))
-        sys.path.insert(0, os.path.join(mycompany_src, "src"))
-        from mycompany.core.config_manager import get_config
         import redis as _redis_lib
-        rcfg = get_config().redis
         r = _redis_lib.Redis(
-            host=rcfg.host, port=rcfg.port,
-            password=rcfg.password, decode_responses=True,
+            host=cfg.redis.host, port=cfg.redis.port,
+            password=cfg.redis.password or None,
+            decode_responses=True,
             socket_connect_timeout=2,
         )
         r.ping()
@@ -245,8 +231,6 @@ async def readiness():
 @app.get("/health")
 async def health(request: Request):
     orchestrator: TaskOrchestrator = request.app.state.orchestrator
-    # Each provider health check gets its own 10s timeout so a single hanging provider
-    # doesn't block the entire /health endpoint.
     try:
         health = await asyncio.wait_for(
             orchestrator.router.health_table(),
@@ -286,50 +270,27 @@ async def system_status(request: Request):
     }
 
 
-# ── Workflow Endpoints ──────────────────────────────────────────────
+# ── Workflow Endpoints (optional, requires plugin) ──────────────────
 
 @app.post("/workflow/start")
-@trace_span("api.workflow.start")
 async def workflow_start(request: Request):
-    """Start a new multi-agent workflow."""
-    body = await request.json()
-    template = body.get("template")
-    context = body.get("context", {})
-    engine = getattr(request.app.state, "workflow_engine", None)
-    if not engine:
-        raise HTTPException(status_code=503, detail="WorkflowEngine not available")
-    try:
-        wf_id = engine.start(template, context)
-        return {"ok": True, "workflow_id": wf_id, "template": template}
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    """Start a new multi-agent workflow (requires workflow plugin)."""
+    raise HTTPException(status_code=503, detail="WorkflowEngine not available — install plugin")
 
 
 @app.get("/workflow/{workflow_id}")
-@trace_span("api.workflow.get_status")
 async def workflow_get_status(workflow_id: str, request: Request):
-    """Get workflow status by ID."""
-    engine = getattr(request.app.state, "workflow_engine", None)
-    if not engine:
-        raise HTTPException(status_code=503, detail="WorkflowEngine not available")
-    status = engine.get_status(workflow_id)
-    if not status:
-        raise HTTPException(status_code=404, detail="Workflow not found")
-    return {"ok": True, "workflow": status}
+    """Get workflow status by ID (requires workflow plugin)."""
+    raise HTTPException(status_code=503, detail="WorkflowEngine not available — install plugin")
 
 
 @app.get("/workflows")
-@trace_span("api.workflow.list")
 async def workflow_list_active(request: Request):
-    """List active (non-completed) workflows."""
-    engine = getattr(request.app.state, "workflow_engine", None)
-    if not engine:
-        raise HTTPException(status_code=503, detail="WorkflowEngine not available")
-    return {"ok": True, "workflows": engine.list_active(limit=50)}
+    """List active workflows (requires workflow plugin)."""
+    raise HTTPException(status_code=503, detail="WorkflowEngine not available — install plugin")
 
 
 @app.post("/im/feishu/webhook")
-@trace_span("api.feishu.webhook")
 async def feishu_webhook(request: Request):
     """New unified Feishu webhook endpoint."""
     try:
@@ -368,7 +329,6 @@ async def feishu_webhook(request: Request):
     try:
         message = await im_adapter.parse_incoming(body)
     except ValueError as e:
-        # Common for duplicates or unhandled events
         return {"ok": True, "skipped": True, "reason": str(e)}
     except Exception as e:
         return {"ok": True, "skipped": True, "reason": f"Parse error: {e}"}
@@ -414,21 +374,17 @@ async def handle_card_action_trigger(event: dict, orchestrator: TaskOrchestrator
     
     print(f"[Card] Processing card action trigger: {json.dumps(event, ensure_ascii=False)[:300]}...")
     
-    # 获取动作信息
     action = event.get("action", {})
     action_value = action.get("value", "{}")
     operator = event.get("operator", {})
     context = event.get("context", {})
     
-    # 解析动作数据
     action_data = None
     value_str = action_value if isinstance(action_value, str) else str(action_value)
     
-    # 尝试解析JSON
     try:
         action_data = json.loads(value_str)
     except json.JSONDecodeError:
-        # 尝试清理字符串
         try:
             cleaned = value_str.strip()
             if cleaned.startswith('"') and cleaned.endswith('"'):
@@ -443,12 +399,10 @@ async def handle_card_action_trigger(event: dict, orchestrator: TaskOrchestrator
     
     print(f"[Card] Parsed action data: {action_data}")
     
-    # 检查是否是审批动作
     action_type = action_data.get("action")
     if action_type in ("approve", "reject"):
         return await handle_approval_card_action(action_data, operator, context, orchestrator)
     
-    # 其他卡片动作暂时返回成功
     return {"ok": True, "action": "processed", "response": {}}
 
 
@@ -467,10 +421,8 @@ async def handle_approval_card_action(
         print(f"[Card] Missing request_id or type in approval action: {action_data}")
         return {"ok": True, "action": "processed", "response": {}}
     
-    # 获取操作者ID
     operator_id = operator.get("open_id", "") or operator.get("user_id", "unknown")
     
-    # 映射动作类型
     if action_type == "approve":
         if approval_type == "allow-once":
             approval_action = ApprovalAction.ALLOW_ONCE
@@ -485,7 +437,6 @@ async def handle_approval_card_action(
         print(f"[Card] Unknown action type: {action_type}")
         return {"ok": True, "action": "processed", "response": {}}
     
-    # 处理审批动作
     success, request = await orchestrator.approval_manager.process_approval_action(
         request_id, approval_action, operator_id
     )
@@ -493,11 +444,9 @@ async def handle_approval_card_action(
     if success:
         print(f"[Card] Approval action processed successfully: {action_type} {approval_type}")
         
-        # 如果审批通过，检查是否有待处理的任务
         if approval_action != ApprovalAction.DENY:
             await orchestrator._process_approved_task(request_id)
         
-        # 返回成功响应给飞书
         return {"ok": True, "action": "processed", "response": {}}
     else:
         print(f"[Card] Failed to process approval action: {request_id}")
@@ -506,14 +455,13 @@ async def handle_approval_card_action(
 
 @app.post("/internal/notify")
 async def internal_notify(request: Request):
-    """Receive notifications from OpenClaw gateway."""
+    """Receive notifications from internal services."""
     try:
         body = await request.json()
         print(f"[Notify] Received notification: {body}")
     except Exception as e:
         print(f"[Notify] Error parsing notification: {e}")
         body = None
-    # Return 200 OK to acknowledge receipt
     return {"ok": True, "received": True}
 
 
@@ -531,136 +479,64 @@ async def feishu_webhook_legacy(request: Request):
 
 
 # ============================================
-# MyCompany Dashboard API (protected)
+# Dashboard API (generic, no MyCompany dependency)
 # ============================================
 
 @app.get("/api/agents", dependencies=[Depends(verify_api_key)])
-def api_agents():
-    """Return agent status from supervisord."""
-    try:
-        import subprocess
-        result = subprocess.run(
-            ["supervisorctl", "-c", "/home/akliedrak/workspace/MyCompany/.config/supervisor/mycompany.conf", "status"],
-            capture_output=True, text=True, timeout=10,
-        )
-        agents = []
-        for line in result.stdout.strip().split("\n"):
-            if not line.strip():
-                continue
-            parts = line.split(None, 2)
-            if len(parts) >= 2:
-                agents.append({
-                    "name": parts[0],
-                    "status": parts[1],
-                    "info": parts[2] if len(parts) > 2 else "",
-                })
-        return {"agents": agents}
-    except Exception as e:
-        return {"agents": [], "error": str(e)}
+def api_agents(request: Request):
+    """Return agent status (generic — reports connected Feishu bots)."""
+    feishu_bots = getattr(request.app.state, "feishu_bots", [])
+    agents = [{"name": b.agent, "app_id_prefix": b.app_id[:8] + "..." if b.app_id else "N/A"} for b in feishu_bots]
+    return {"agents": agents, "total": len(agents)}
 
 
 @app.get("/api/metrics", dependencies=[Depends(verify_api_key)])
-def api_metrics():
-    """Return token usage metrics for today."""
+def api_metrics(request: Request):
+    """Return system metrics (health status of providers)."""
+    providers = getattr(request.app.state, "providers", {})
+    import asyncio
+    async def _get_health():
+        results = {}
+        for name, p in providers.items():
+            try:
+                ok, msg = await p.health_check()
+                results[name] = {"healthy": ok, "message": msg}
+            except Exception as e:
+                results[name] = {"healthy": False, "message": str(e)}
+        return results
+    
     try:
-        import sqlite3
-        from datetime import datetime
-        db = "/home/akliedrak/workspace/MyCompany/.system/metrics.db"
-        conn = sqlite3.connect(db)
-        conn.row_factory = sqlite3.Row
-        today = datetime.now().strftime("%Y-%m-%d")
-        rows = conn.execute(
-            "SELECT agent, COUNT(*) as tasks, SUM(input_tokens) as input, "
-            "SUM(output_tokens) as output, SUM(duration_seconds) as duration "
-            "FROM metrics WHERE timestamp LIKE ? GROUP BY agent",
-            (f"{today}%",),
-        ).fetchall()
-        conn.close()
-        return {"metrics": [dict(r) for r in rows], "date": today}
-    except Exception as e:
-        return {"metrics": [], "error": str(e)}
-
-
-@app.get("/api/tasks", dependencies=[Depends(verify_api_key)])
-def api_tasks():
-    """Return recent tasks from metrics DB."""
-    try:
-        import sqlite3
-        db = "/home/akliedrak/workspace/MyCompany/.system/metrics.db"
-        conn = sqlite3.connect(db)
-        conn.row_factory = sqlite3.Row
-        rows = conn.execute(
-            "SELECT agent, task_id, model, input_tokens, output_tokens, "
-            "duration_seconds, status, timestamp FROM metrics "
-            "ORDER BY timestamp DESC LIMIT 50"
-        ).fetchall()
-        conn.close()
-        return {"tasks": [dict(r) for r in rows]}
-    except Exception as e:
-        return {"tasks": [], "error": str(e)}
-
-
-@app.get("/api/dead-letters", dependencies=[Depends(verify_api_key)])
-def api_dead_letters():
-    """Return dead letter queue statistics and pending items."""
-    try:
-        import sys
-        sys.path.insert(0, "/home/akliedrak/workspace/MyCompany/src")
-        from mycompany.core.dead_letter import DeadLetterQueue
-        dlq = DeadLetterQueue()
-        return {"stats": dlq.get_stats(), "pending": dlq.list_pending(limit=20)}
-    except Exception as e:
-        return {"stats": {}, "pending": [], "error": str(e)}
-
-
-@app.get("/api/circuit-breakers", dependencies=[Depends(verify_api_key)])
-def api_circuit_breakers():
-    """Return circuit breaker states."""
-    try:
-        import sys
-        sys.path.insert(0, "/home/akliedrak/workspace/MyCompany/src")
-        from mycompany.core.circuit_breaker import all_breaker_stats
-        return {"breakers": all_breaker_stats()}
-    except Exception as e:
-        return {"breakers": {}, "error": str(e)}
-
-
-@app.get("/api/audit", dependencies=[Depends(verify_api_key)])
-def api_audit(event_type: str | None = None, agent: str | None = None, limit: int = 50):
-    """Query audit log entries."""
-    try:
-        import sys
-        sys.path.insert(0, "/home/akliedrak/workspace/MyCompany/src")
-        from mycompany.core.audit import AuditLogger
-        entries = AuditLogger().query(event_type=event_type, agent=agent, limit=limit)
-        return {"entries": entries}
-    except Exception as e:
-        return {"entries": [], "error": str(e)}
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    
+    health = loop.run_until_complete(_get_health())
+    return {"providers": health, "timestamp": __import__("time").time()}
 
 
 @app.get("/metrics")
-def prometheus_metrics():
-    """Prometheus metrics endpoint for scraping.
-
-    Aggregates metrics from all agent processes via the shared SQLite DB.
-    """
-    try:
-        import sys, os
-        mycompany_src = os.environ.get("MYCOMPANY_HOME", os.path.expanduser("~/workspace/MyCompany"))
-        sys.path.insert(0, os.path.join(mycompany_src, "src"))
-        from mycompany.utils.metrics_export import render_metrics_from_db
-        return Response(content=render_metrics_from_db(), media_type="text/plain; version=0.0.4")
-    except Exception as e:
-        return Response(content=f"# Error generating metrics\n# {e}\n", media_type="text/plain")
+def prometheus_metrics(request: Request):
+    """Prometheus metrics endpoint (basic health)."""
+    import time as _time
+    lines = [
+        "# HELP vibebridge_up VibeBridge is running",
+        "# TYPE vibebridge_up gauge",
+        "vibebridge_up 1",
+        f"# HELP vibebridge_info VibeBridge info",
+        "# TYPE vibebridge_info gauge",
+        f'vibebridge_info{{version="1.2.0"}} 1',
+    ]
+    return Response(content="\n".join(lines) + "\n", media_type="text/plain; version=0.0.4")
 
 
 @app.get("/dashboard", dependencies=[Depends(verify_api_key)])
 def dashboard():
-    """Enterprise dashboard with all system metrics."""
+    """VibeBridge Dashboard — lightweight system overview."""
     html = '''<!DOCTYPE html>
 <html>
 <head>
-  <title>MyCompany Enterprise Dashboard</title>
+  <title>VibeBridge Dashboard</title>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
@@ -668,58 +544,27 @@ def dashboard():
     body { font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 16px; background: #f5f5f5; -webkit-font-smoothing: antialiased; }
     h1 { color: #1a1a2e; font-size: 1.5rem; margin: 0 0 16px 0; }
     .grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
-    @media (min-width: 768px) {
-      .grid { grid-template-columns: 1fr 1fr; }
-      h1 { font-size: 2rem; }
-    }
+    @media (min-width: 768px) { .grid { grid-template-columns: 1fr 1fr; } h1 { font-size: 2rem; } }
     .card { background: white; border-radius: 12px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
     .card h3 { margin-top: 0; color: #333; border-bottom: 2px solid #e0e0e0; padding-bottom: 8px; font-size: 1rem; }
     .badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; margin: 2px; }
-    .badge-running { background: #d4edda; color: #155724; }
-    .badge-stopped { background: #f8d7da; color: #721c24; }
-    .badge-open { background: #f8d7da; color: #721c24; }
-    .badge-closed { background: #d4edda; color: #155724; }
+    .badge-healthy { background: #d4edda; color: #155724; }
+    .badge-unhealthy { background: #f8d7da; color: #721c24; }
     pre { background: #f8f9fa; padding: 10px; border-radius: 8px; overflow-x: auto; font-size: 12px; }
-    table { width: 100%; border-collapse: collapse; font-size: 12px; }
-    th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid #e0e0e0; }
-    th { color: #666; font-weight: 600; }
-    .alert { background: #fff3cd; border-left: 4px solid #ffc107; padding: 12px; margin: 10px 0; border-radius: 4px; font-size: 13px; }
-    .footer { text-align: center; color: #999; font-size: 12px; margin-top: 24px; padding: 16px; }
     .refresh-btn { background: #1a1a2e; color: white; border: none; padding: 8px 16px; border-radius: 20px; font-size: 13px; cursor: pointer; }
-    @media (max-width: 480px) {
-      .card { padding: 12px; }
-      table { font-size: 11px; }
-      th, td { padding: 6px 4px; }
-    }
   </style>
 </head>
 <body>
-<h1>🏢 MyCompany Enterprise Dashboard <button class="refresh-btn" onclick="load()">🔄 Refresh</button></h1>
+<h1>🔌 VibeBridge Dashboard <button class="refresh-btn" onclick="load()">🔄 Refresh</button></h1>
 
 <div class="grid">
   <div class="card">
-    <h3>🤖 Agent Status</h3>
+    <h3>🤖 Feishu Bots</h3>
     <div id="agents">Loading...</div>
   </div>
   <div class="card">
-    <h3>⚡ Circuit Breakers</h3>
-    <div id="breakers">Loading...</div>
-  </div>
-  <div class="card">
-    <h3>📊 Token Usage (Today)</h3>
+    <h3>📊 Provider Health</h3>
     <div id="metrics">Loading...</div>
-  </div>
-  <div class="card">
-    <h3>💀 Dead Letter Queue</h3>
-    <div id="dlq">Loading...</div>
-  </div>
-  <div class="card" style="grid-column: 1 / -1;">
-    <h3>📋 Recent Tasks</h3>
-    <div id="tasks">Loading...</div>
-  </div>
-  <div class="card" style="grid-column: 1 / -1;">
-    <h3>🔍 Recent Audit Events</h3>
-    <div id="audit">Loading...</div>
   </div>
 </div>
 
@@ -728,55 +573,22 @@ async function load() {
   try {
     const agents = await fetch("/api/agents").then(r => r.json());
     const agentHtml = (agents.agents || []).map(a =>
-      `<span class="badge badge-${a.status === 'RUNNING' ? 'running' : 'stopped'}">${a.name}</span> `
-    ).join('');
-    document.getElementById("agents").innerHTML = agentHtml || '<em>No agents</em>';
+      `<span class="badge badge-healthy">${a.name}</span> `
+    ).join('') || '<em>No bots configured</em>';
+    document.getElementById("agents").innerHTML = agentHtml;
   } catch(e) { document.getElementById("agents").innerHTML = '<span style="color:red">Error</span>'; }
 
   try {
-    const breakers = await fetch("/api/circuit-breakers").then(r => r.json());
-    const b = breakers.breakers || {};
-    const breakerHtml = Object.entries(b).map(([k,v]) =>
-      `<span class="badge badge-${v.state === 'closed' ? 'closed' : 'open'}">${k}: ${v.state}</span> `
-    ).join('') || '<em>All healthy</em>';
-    document.getElementById("breakers").innerHTML = breakerHtml;
-  } catch(e) { document.getElementById("breakers").innerHTML = '<span style="color:red">Error</span>'; }
-
-  try {
     const metrics = await fetch("/api/metrics").then(r => r.json());
-    document.getElementById("metrics").innerHTML = "<pre>" + JSON.stringify(metrics, null, 2) + "</pre>";
+    const providers = metrics.providers || {};
+    const html = Object.entries(providers).map(([k,v]) =>
+      `<span class="badge badge-${v.healthy ? 'healthy' : 'unhealthy'}">${k}: ${v.healthy ? 'OK' : v.message}</span><br>`
+    ).join('') || '<em>No providers</em>';
+    document.getElementById("metrics").innerHTML = html;
   } catch(e) { document.getElementById("metrics").innerHTML = '<span style="color:red">Error</span>'; }
-
-  try {
-    const dlq = await fetch("/api/dead-letters").then(r => r.json());
-    const stats = dlq.stats || {};
-    let html = `<p>Total: ${stats.total||0} | Pending: <b>${stats.pending||0}</b> | Retried: ${stats.retried||0} | Abandoned: ${stats.abandoned||0}</p>`;
-    if (stats.pending > 0) html += '<div class="alert">⚠️ ' + stats.pending + ' tasks need attention</div>';
-    document.getElementById("dlq").innerHTML = html;
-  } catch(e) { document.getElementById("dlq").innerHTML = '<span style="color:red">Error</span>'; }
-
-  try {
-    const tasks = await fetch("/api/tasks").then(r => r.json());
-    const rows = (tasks.tasks || []).map(t =>
-      `<tr><td>${t.agent}</td><td>${t.task_id}</td><td>${t.model||'-'}</td><td>${t.status}</td><td>${t.timestamp}</td></tr>`
-    ).join('');
-    document.getElementById("tasks").innerHTML = rows ?
-      `<table><tr><th>Agent</th><th>Task ID</th><th>Model</th><th>Status</th><th>Time</th></tr>${rows}</table>` :
-      '<em>No tasks recorded</em>';
-  } catch(e) { document.getElementById("tasks").innerHTML = '<span style="color:red">Error</span>'; }
-
-  try {
-    const audit = await fetch("/api/audit?limit=20").then(r => r.json());
-    const rows = (audit.entries || []).map(e =>
-      `<tr><td>${e.ts}</td><td>${e.evt}</td><td>${e.agent||e.user||'-'}</td><td>${JSON.stringify(e).slice(0,120)}...</td></tr>`
-    ).join('');
-    document.getElementById("audit").innerHTML = rows ?
-      `<table><tr><th>Time</th><th>Event</th><th>Actor</th><th>Details</th></tr>${rows}</table>` :
-      '<em>No audit events</em>';
-  } catch(e) { document.getElementById("audit").innerHTML = '<span style="color:red">Error</span>'; }
 }
 load();
-setInterval(load, 5000);
+setInterval(load, 10000);
 </script>
 </body>
 </html>'''

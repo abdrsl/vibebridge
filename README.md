@@ -5,7 +5,7 @@
 
 > **The missing IM gateway for local AI coding agents.**
 
-Deploy an AI coding agent to your team chat in 60 seconds. VibeBridge connects **Feishu (Lark)** to your local vibe-coding tools — OpenCode, Kimi Code CLI, Claude Code, and OpenClaw — so you can write, review, and deploy code directly from a chat message.
+Deploy an AI coding agent to your team chat in 60 seconds. VibeBridge connects **Feishu (Lark)** to your local vibe-coding tools — OpenCode, Kimi Code CLI, and Claude Code — so you can write, review, and deploy code directly from a chat message.
 
 ---
 
@@ -13,7 +13,7 @@ Deploy an AI coding agent to your team chat in 60 seconds. VibeBridge connects *
 
 - **Remote coding from your phone**: `@VibeBridge write a Python script to backup my DB` while you're on the subway.
 - **Team collaboration**: Product managers and designers can request simple changes in a Feishu group, and the agent executes them automatically.
-- **Multi-tool freedom**: Switch between OpenCode, Kimi, Claude, or OpenClaw with a simple command prefix (`/kimi`, `/claude`, `/openc`).
+- **Multi-tool freedom**: Switch between OpenCode, Kimi, or Claude with a simple command prefix (`/kimi`, `/claude`, `/openc`).
 - **Permission control with passphrase**: Use a secret passphrase in messages to grant elevated permissions for sensitive operations.
 
 ---
@@ -86,7 +86,6 @@ Switch providers on the fly:
 ```
 @VibeBridge /kimi refactor this function to use async/await
 @VibeBridge /claude design a PostgreSQL schema for an e-commerce site
-@VibeBridge /openclaw check my project status
 @VibeBridge /openrouter write a Python script with GPT-4o
 ```
 
@@ -103,10 +102,10 @@ Session Manager
       ↓
 Provider Router
       ↓
-┌─────────┬─────────┬─────────┬─────────┐
-│OpenCode │  Kimi   │ Claude  │OpenClaw │
-│Provider │Provider │Provider │Provider │
-└─────────┴─────────┴─────────┴─────────┘
+┌─────────┬─────────┬─────────┐
+│OpenCode │  Kimi   │ Claude  │
+│Provider │Provider │Provider │
+└─────────┴─────────┴─────────┘
       ↓
 Streaming result cards back to Feishu
 ```
@@ -123,7 +122,6 @@ Streaming result cards back to Feishu
 |----------|--------|--------------|
 | **OpenCode** | ✅ Full | Spawns `opencode run --format json` with streaming output. |
 | **OpenRouter** | ✅ Full | Connects to OpenRouter API with 100+ models support. |
-| **OpenClaw** | ✅ Health + Basic | Connects to local OpenClaw Gateway HTTP API. |
 | **Kimi Code CLI** | 🚧 Partial | Requires `kimi acp` running; bridge talks via ACP/MCP protocol. |
 | **Claude Code** | 🚧 Partial | Health check only; execution layer coming soon. |
 
@@ -150,9 +148,6 @@ agents:
     binary: auto
     model: deepseek/deepseek-chat
     default_workdir: ~/workspace
-  openclaw:
-    enabled: true
-    gateway_url: http://127.0.0.1:18789
   kimi:
     enabled: false
     acp_url: http://127.0.0.1:9876

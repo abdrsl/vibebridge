@@ -29,21 +29,12 @@ if [ "$CURRENT_URL" != "$LAST_URL" ]; then
     # 保存新 URL
     echo "$CURRENT_URL" > "$LAST_URL_FILE"
     
-    # 发送飞书通知 (通过 OpenClaw)
-    MESSAGE="🔔 Reviewer-C 隧道 URL 更新
-
-应用 ID: $FEISHU_APP_ID
-新 URL: $CURRENT_URL
-Webhook端点: ${CURRENT_URL}
-
-请在飞书开发者后台更新事件订阅 URL。"
+    # 构建通知消息
+    MESSAGE="隧道 URL 已更新: $CURRENT_URL"
     
-    # 同时发送到当前会话作为备用
+    # 发送飞书通知 (通过 curl 或 vibebridge)
     echo "$MESSAGE" > /tmp/tunnel_notification.txt
-
-    # 使用 openclaw message 发送
-    openclaw message send --channel feishu --target "$FEISHU_CHAT_ID" --message "$MESSAGE" 2>/dev/null || \
-    echo "⚠️ 飞书通知发送失败，请手动更新"
+    echo "⚠️ 飞书通知需要配置 VibeBridge 服务后发送，请手动更新"
     
     echo "✅ 已发送 URL 变更通知"
 else

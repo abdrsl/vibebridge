@@ -5,7 +5,6 @@ from __future__ import annotations
 from .base import BaseProvider
 from .claude import ClaudeProvider
 from .kimi import KimiProvider
-from .openclaw import OpenClawProvider
 from .opencode import OpenCodeProvider
 from .openrouter import OpenRouterProvider
 
@@ -14,7 +13,6 @@ __all__ = [
     "BaseProvider",
     "ClaudeProvider",
     "KimiProvider",
-    "OpenClawProvider",
     "OpenCodeProvider",
     "OpenRouterProvider",
     "build_providers",
@@ -33,11 +31,6 @@ def build_providers(config) -> dict[str, BaseProvider]:
             binary=None if config.opencode.binary == "auto" else config.opencode.binary,
             model=config.opencode.model,
             default_workdir=config.opencode.default_workdir,
-        )
-
-    if config.openclaw.enabled:
-        providers["openclaw"] = OpenClawProvider(
-            gateway_url=config.openclaw.gateway_url,
         )
 
     if config.kimi.enabled:

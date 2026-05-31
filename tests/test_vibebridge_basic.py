@@ -7,7 +7,6 @@ from vibebridge.providers import build_providers
 from vibebridge.providers.base import StreamEvent, StreamEventType
 from vibebridge.providers.claude import ClaudeProvider
 from vibebridge.providers.kimi import KimiProvider
-from vibebridge.providers.openclaw import OpenClawProvider
 from vibebridge.providers.opencode import OpenCodeProvider
 from vibebridge.router import ProviderRouter
 from vibebridge.session import SessionManager
@@ -18,7 +17,6 @@ def test_agents_config():
     return AgentsConfig(
         default_provider="opencode",
         opencode={"enabled": True, "binary": "auto", "model": "test-model"},
-        openclaw={"enabled": True},
         kimi={"enabled": True},
         claude={"enabled": False},
     )
@@ -66,11 +64,6 @@ async def test_opencode_provider_health_real():
 def test_kimi_provider_placeholder():
     p = KimiProvider()
     assert p.name == "kimi"
-
-
-def test_openclaw_provider_placeholder():
-    p = OpenClawProvider()
-    assert p.name == "openclaw"
 
 
 def test_claude_provider_disabled():

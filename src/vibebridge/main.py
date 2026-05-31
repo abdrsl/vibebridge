@@ -16,8 +16,8 @@ from fastapi.staticfiles import StaticFiles as _StaticFiles
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
-from vibebridge._compat import ensure_mycompany_path, get_supervisor_conf
 from vibebridge.admin.router import router as admin_router
+from vibebridge.config import get_config
 from vibebridge.limiter import limiter
 from vibebridge.system import start_multi_agent_system, stop_multi_agent_system
 
@@ -60,22 +60,30 @@ async def lifespan(app: FastAPI):
     websocket_clients = []
     ws_enabled = os.environ.get("FEISHU_WEBSOCKET_ENABLED", "true").lower() in ("true", "1", "yes")
     if ws_enabled and FEISHU_WEBSOCKET_AVAILABLE and FeishuWebSocketClient:
-        # Only start WebSocket for CEO agent (avoids credential issues with other bots)
+        # Start WebSocket for bots configured via YAML or env
         try:
-            ensure_mycompany_path()
-            from mycompany.config.bots import BotRegistry
-            registry = BotRegistry()
-            ceo_bot = registry.get("ceo-agent")
-            if ceo_bot and ceo_bot.app_id and ceo_bot.app_secret:
-                client = FeishuWebSocketClient(
-                    app_id=ceo_bot.app_id,
-                    app_secret=ceo_bot.app_secret
-                )
-                await client.start()
-                websocket_clients.append(client)
-                print(f"[WebSocket] ✅ ceo-agent started (using {ceo_bot.app_id[:8]}...)")
-            else:
-                print("[WebSocket] ⚠️ No valid CEO bot credentials")
+            cfg = get_config()
+            for bot_cfg in cfg.feishu.bots:
+                if bot_cfg.enabled and bot_cfg.app_id and bot_cfg.app_secret:
+                    client = FeishuWebSocketClient(
+                        app_id=bot_cfg.app_id,
+                        app_secret=bot_cfg.app_secret
+                    )
+                    await client.start()
+                    websocket_clients.append(client)
+                    print(f"[WebSocket] ✅ {bot_cfg.agent} started (using {bot_cfg.app_id[:8]}...)")
+            if not websocket_clients:
+                # Fallback to legacy single-bot config
+                if cfg.feishu.app_id and cfg.feishu.app_secret:
+                    client = FeishuWebSocketClient(
+                        app_id=cfg.feishu.app_id,
+                        app_secret=cfg.feishu.app_secret
+                    )
+                    await client.start()
+                    websocket_clients.append(client)
+                    print(f"[WebSocket] ✅ default bot started")
+                else:
+                    print("[WebSocket] ⚠️ No valid bot credentials in config")
         except Exception as e:
             print(f"[WebSocket] ⚠️ Failed: {e} — falling back to webhook mode")
     else:
@@ -106,7 +114,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="OpenCode-Feishu Bridge - Multi-Agent System",
-    version="1.0.0",
+    version="1.1.0",
     description="Open-source AI coding agent service with Feishu integration",
     lifespan=lifespan,
 )
@@ -136,8 +144,8 @@ app.add_middleware(
 # Admin panel
 app.include_router(admin_router)
 
-# Static files — serve dashboard assets (animated.html, 3d-office-v2.html, etc.)
-_dashboard_dir = os.environ.get("MYCOMPANY_DASHBOARD_DIR", "/home/akliedrak/workspace/dashboard")
+# Static files — serve dashboard assets if DASHBOARD_DIR is set
+_dashboard_dir = os.environ.get("VIBEBRIDGE_DASHBOARD_DIR", os.environ.get("DASHBOARD_DIR", ""))
 if os.path.isdir(_dashboard_dir):
     app.mount("/dashboard/static", _StaticFiles(directory=_dashboard_dir, html=True), name="dashboard_static")
     app.mount("/dashboard", _StaticFiles(directory=_dashboard_dir, html=True), name="dashboard")
@@ -150,22 +158,7 @@ app.include_router(opencode.router)
 app.include_router(internal.router)
 app.include_router(dashboard.router)
 
-# ============================================
-# OpenClaw 审批系统集成（自动生成）
-# ============================================
-
-# 导入审批插件
-
-sys.path.insert(0, str(Path(__file__).parent))
-
-# 执行插件代码 - 暂时跳过
-try:
-    # exec(open(Path(__file__).parent.parent / "approval_plugin.py").read())
-    # print("✅ OpenClaw 审批系统已集成")
-    print("✅ OpenClaw 审批系统已跳过")
-except Exception as e:
-    print(f"⚠️  OpenClaw 审批系统集成失败: {e}")
-    print("⚠️  继续运行（审批功能不可用）")
+# Approval system loaded via vibebridge.server. No external dependencies.
 
 
 # ============================================

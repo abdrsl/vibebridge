@@ -96,7 +96,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="OpenCode-Feishu Bridge - Multi-Agent System",
+    title="VibeBridge - IM Gateway",
     version="1.0.0",
     description="Open-source AI coding agent service with Feishu integration",
     lifespan=lifespan,
@@ -127,7 +127,7 @@ app.add_middleware(
 
 # Static files — serve dashboard assets (animated.html, 3d-office-v2.html, etc.)
 from fastapi.staticfiles import StaticFiles as _StaticFiles
-_dashboard_dir = os.environ.get("MYCOMPANY_DASHBOARD_DIR", "/home/akliedrak/workspace/dashboard")
+_dashboard_dir = os.environ.get("VIBEBRIDGE_DASHBOARD_DIR", os.environ.get("DASHBOARD_DIR", ""))
 if os.path.isdir(_dashboard_dir):
     app.mount("/dashboard/static", _StaticFiles(directory=_dashboard_dir, html=True), name="dashboard_static")
     app.mount("/dashboard", _StaticFiles(directory=_dashboard_dir, html=True), name="dashboard")
@@ -153,24 +153,15 @@ def health():
     # Check Redis
     try:
         import redis as _r
-        rd = _r.Redis(host="localhost", port=6379, password="mycompany2026", socket_timeout=2)
+        redis_password = os.environ.get("REDIS_PASSWORD", "")
+        rd = _r.Redis(host=os.environ.get("REDIS_HOST", "localhost"),
+                      port=int(os.environ.get("REDIS_PORT", "6379")),
+                      password=redis_password or None, socket_timeout=2)
         status["checks"]["redis"] = "ok" if rd.ping() else "fail"
     except Exception:
         status["checks"]["redis"] = "fail"
-    # Check agents
-    try:
-        ra = sp.run(["supervisorctl", "-c",
-            "/home/akliedrak/workspace/MyCompany/.config/supervisor/mycompany.conf", "status"],
-            capture_output=True, text=True, timeout=5)
-        running = ra.stdout.count("RUNNING")
-        total = max(ra.stdout.count("\n"), 1)
-        status["checks"]["agents"] = f"{running}/{total}"
-        if running < 8: status["ok"] = False
-    except Exception:
-        status["checks"]["agents"] = "unknown"
     # Check disk
-    import os
-    stat = os.statvfs("/home/akliedrak/workspace/MyCompany")
+    stat = os.statvfs(os.environ.get("VIBEBRIDGE_WORKDIR", "/tmp"))
     free_gb = stat.f_bavail * stat.f_frsize / (1024**3)
     status["checks"]["disk_gb"] = round(free_gb, 1)
     if free_gb < 1: status["ok"] = False
@@ -565,31 +556,14 @@ async def feishu_webhook_opencode(
 @app.post("/internal/notify")
 @limiter.limit("60 per minute")
 async def internal_notify(request: Request, body: dict[str, Any] = None):
-    """Receive notifications from OpenClaw gateway."""
+    """Receive notifications from internal services."""
     # Log the notification for debugging
     print(f"[Notify] Received notification: {body}")
     # Return 200 OK to acknowledge receipt
     return {"ok": True, "received": True}
 
 
-# ============================================
-# OpenClaw 审批系统集成（自动生成）
-# ============================================
-
-# 导入审批插件
-import sys
-
-sys.path.insert(0, str(Path(__file__).parent))
-
-# 执行插件代码 - 暂时跳过
-try:
-    # exec(open(Path(__file__).parent.parent / "approval_plugin.py").read())
-    # print("✅ OpenClaw 审批系统已集成")
-    print("✅ OpenClaw 审批系统已跳过")
-except Exception as e:
-    print(f"⚠️  OpenClaw 审批系统集成失败: {e}")
-    print("⚠️  继续运行（审批功能不可用）")
-
+# Approval system loaded via vibebridge.server. No external dependencies.
 
 # ============================================
 # Approval System Routes (机器人C)
@@ -602,24 +576,26 @@ except Exception as e:
 
 
 # ============================================
-# MyCompany Dashboard API
+# Dashboard API
 # ============================================
 
 @app.get("/api/agents")
 def api_agents():
-    """Return agent status (clean names, no mycompany: prefix)."""
+    """Return agent status."""
     try:
         import subprocess
+        supervisor_conf = os.environ.get("SUPERVISOR_CONF", "")
+        if not supervisor_conf:
+            return {"agents": [], "error": "SUPERVISOR_CONF not configured"}
         result = subprocess.run(
-            ["supervisorctl", "-c", "/home/akliedrak/workspace/MyCompany/.config/supervisor/mycompany.conf", "status"],
+            ["supervisorctl", "-c", supervisor_conf, "status"],
             capture_output=True, text=True, timeout=10,
         )
         agents = []
         for line in result.stdout.strip().split("\n"):
             parts = line.split(None, 2)
             if len(parts) >= 2:
-                name = parts[0].replace("mycompany:", "")  # strip prefix
-                agents.append({"name": name, "status": parts[1], "info": parts[2] if len(parts) > 2 else ""})
+                agents.append({"name": parts[0], "status": parts[1], "info": parts[2] if len(parts) > 2 else ""})
         return {"agents": agents, "total": len(agents)}
     except Exception as e:
         return {"agents": [], "error": str(e)}
@@ -631,7 +607,9 @@ def api_metrics():
     try:
         import sqlite3
         from datetime import datetime
-        db = "/home/akliedrak/workspace/MyCompany/.system/metrics.db"
+        db = os.environ.get("METRICS_DB_PATH", "")
+        if not db or not os.path.exists(db):
+            return {"metrics": [], "error": "METRICS_DB_PATH not configured"}
         conn = sqlite3.connect(db)
         conn.row_factory = sqlite3.Row
         today = datetime.now().strftime("%Y-%m-%d")
@@ -662,7 +640,11 @@ def api_chat(body: dict):
     task = {"type":"task","task_id":tid,"from":"webui","to":agent,"description":msg,"priority":0}
     try:
         import redis as _r
-        rd = _r.Redis(host="localhost",port=6379,password="mycompany2026",socket_timeout=3,decode_responses=True)
+        redis_password = os.environ.get("REDIS_PASSWORD", "")
+        rd = _r.Redis(host=os.environ.get("REDIS_HOST","localhost"),
+                      port=int(os.environ.get("REDIS_PORT","6379")),
+                      password=redis_password or None,
+                      socket_timeout=3,decode_responses=True)
         rd.publish(f"task.{agent}", json.dumps(task,ensure_ascii=False))
         pubsub = rd.pubsub(); pubsub.subscribe(f"outbox.{agent}")
         deadline = _t.time() + 40

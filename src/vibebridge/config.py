@@ -40,11 +40,6 @@ class OpenCodeProviderConfig(BaseModel):
     default_workdir: str = "~/workspace"
 
 
-class OpenClawProviderConfig(BaseModel):
-    enabled: bool = False
-    gateway_url: str = "http://127.0.0.1:18789"
-
-
 class KimiProviderConfig(BaseModel):
     enabled: bool = False
     acp_url: str = "http://127.0.0.1:9876"
@@ -65,7 +60,6 @@ class OpenRouterProviderConfig(BaseModel):
 class AgentsConfig(BaseModel):
     default_provider: str = "opencode"
     opencode: OpenCodeProviderConfig = Field(default_factory=OpenCodeProviderConfig)
-    openclaw: OpenClawProviderConfig = Field(default_factory=OpenClawProviderConfig)
     kimi: KimiProviderConfig = Field(default_factory=KimiProviderConfig)
     claude: ClaudeProviderConfig = Field(default_factory=ClaudeProviderConfig)
     openrouter: OpenRouterProviderConfig = Field(default_factory=OpenRouterProviderConfig)
@@ -88,6 +82,15 @@ class LoggingConfig(BaseModel):
     format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
 
+class RedisConfig(BaseModel):
+    """Redis connection configuration."""
+    host: str = "localhost"
+    port: int = 6379
+    password: str = ""
+    db: int = 0
+    enabled: bool = True
+
+
 class Config(BaseSettings):
     model_config = SettingsConfigDict(
         env_nested_delimiter="__",
@@ -100,6 +103,7 @@ class Config(BaseSettings):
     agents: AgentsConfig = Field(default_factory=AgentsConfig)
     approval: ApprovalConfig = Field(default_factory=ApprovalConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
+    redis: RedisConfig = Field(default_factory=RedisConfig)
 
     # Runtime paths
     config_dir: Path = Field(default_factory=lambda: Path.home() / ".config" / "vibebridge")
@@ -163,6 +167,9 @@ def _apply_flat_env_overrides(data: dict) -> dict:
         "FEISHU_MODE": ("feishu", "mode"),
         "VB_DEFAULT_PROVIDER": ("agents", "default_provider"),
         "OPENROUTER_API_KEY": ("agents", "openrouter", "api_key"),
+        "REDIS_HOST": ("redis", "host"),
+        "REDIS_PORT": ("redis", "port"),
+        "REDIS_PASSWORD": ("redis", "password"),
     }
     for env_key, path in mappings.items():
         val = os.getenv(env_key)

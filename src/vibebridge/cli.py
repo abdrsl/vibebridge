@@ -38,7 +38,6 @@ def init(
         "opencode": _has_binary("opencode") or _exists(Path.home() / ".nvm/versions/node/v24.14.0/bin/opencode"),  # TODO: make configurable
         "kimi": _check_kimi(),
         "claude": _has_binary("claude"),
-        "openclaw": _check_openclaw(),
         "openrouter": bool(os.getenv("OPENROUTER_API_KEY")),
     }
 
@@ -82,7 +81,6 @@ def init(
     cfg.agents.opencode.enabled = scans["opencode"]
     cfg.agents.kimi.enabled = scans["kimi"]
     cfg.agents.claude.enabled = scans["claude"]
-    cfg.agents.openclaw.enabled = scans["openclaw"]
     cfg.agents.openrouter.enabled = scans["openrouter"]
 
     # Write config (convert Paths to strings for safe YAML)
@@ -306,7 +304,6 @@ def doctor():
     table.add_row("OpenCode", "✅ Found" if _has_binary("opencode") else "❌ Not found")
     table.add_row("Kimi", "✅ Found" if _check_kimi() else "❌ Not found")
     table.add_row("Claude", "✅ Found" if _has_binary("claude") else "❌ Not found")
-    table.add_row("OpenClaw Gateway", "✅ Running" if _check_openclaw() else "❌ Not reachable")
     table.add_row("OpenRouter API Key", "✅ Configured" if os.getenv("OPENROUTER_API_KEY") else "❌ Not configured")
 
     console.print(table)
@@ -324,16 +321,6 @@ def _exists(path: Path) -> bool:
 
 def _check_kimi() -> bool:
     return _has_binary("kimi")
-
-
-def _check_openclaw() -> bool:
-    import httpx
-
-    try:
-        resp = httpx.get("http://127.0.0.1:18789/health", timeout=2.0)
-        return resp.status_code == 200
-    except Exception:
-        return False
 
 
 def _node_version() -> str | None:

@@ -16,7 +16,6 @@ class ProviderRouter:
             "/claude": "claude",
             "/openc": "opencode",
             "/oc": "opencode",
-            "/openclaw": "openclaw",
         }
         self.default = config.default_provider
 

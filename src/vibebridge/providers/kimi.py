@@ -84,7 +84,7 @@ class KimiProvider(BaseProvider):
             type=StreamEventType.ERROR,
             content=(
                 "Kimi execution via VibeBridge is under development. "
-                "Please use `/openc` or `/openclaw` as a fallback for now."
+                "Please use `/openc` as a fallback for now."
             ),
             task_id=task_id,
         )

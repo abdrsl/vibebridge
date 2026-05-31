@@ -1,4 +1,4 @@
-"""Agent Bridge — connects Feishu ↔ MyCompany Agent system via Redis.
+"""Agent Bridge — connects Feishu ↔ Agent system via Redis.
 
 Design:
   1. Feishu webhook receives @mention → routes to task.{agent} channel

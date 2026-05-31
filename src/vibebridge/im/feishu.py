@@ -1,6 +1,6 @@
 """Feishu IM Adapter — Multi-bot architecture.
 
-Each MyCompany agent can have its own Feishu bot with independent
+Each agent can have its own Feishu bot with independent
 App ID + Secret. Messages are routed by ``header.app_id`` and
 replies are sent via the correct bot's credentials.
 """
