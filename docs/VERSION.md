@@ -1,127 +1,126 @@
 # VibeBridge - 版本信息
 
-## 当前版本: v1.0.2
+## 当前版本: v1.2.0
 
-**发布日期**: 2026-04-08  
-**状态**: 稳定发布版本  
-**Python要求**: 3.8+  
+**发布日期**: 2026-06-07
+**状态**: 稳定发布版本
+**Python 要求**: 3.10+
 **许可证**: MIT License
 
 ## 版本历史
 
+### v1.2.0 (2026-06-07)
+- **多 Provider 架构**: OpenCode、Kimi、Claude、OpenRouter 动态切换
+- **Constitutional Guard**: 拦截危险命令，需 `mysecret` 授权
+- **单卡片流式更新**: 避免消息刷屏
+- **OpenCode Session 连续性**: 自动续接对话上下文
+- **历史上下文**: 自动加载最近对话历史
+- **架构重构**: `TaskOrchestrator` + `ProviderRouter` 替代旧版 6-agent 架构
+- **部署**: systemd user service 自动重启
+
 ### v1.0.2 (2026-04-08)
-- **新增**: 模式切换功能，支持websocket和webhook模式动态切换
+- **新增**: 模式切换功能，支持 websocket 和 webhook 动态切换
 - **优化**: 飞书交互体验，实时情感滚动显示
-- **增强**: WebSocket自动重连机制，连接稳定性提升
-- **修复**: app_secret截断bug，动态进度卡片显示
-- **整理**: 项目结构优化，移除临时文件，规范目录结构
+- **增强**: WebSocket 自动重连机制
+- **修复**: app_secret 截断 bug，动态进度卡片显示
 
 ### v1.0.1 (2026-04-01)
-- **增强**: 加密功能增强，支持Feishu事件订阅加密/解密
-- **新增**: WebSocket长连接支持
+- **增强**: 加密功能增强，支持 Feishu 事件订阅加密/解密
+- **新增**: WebSocket 长连接支持
 - **优化**: 多智能体系统稳定性改进
-- **修复**: 会话管理内存泄漏问题
-- **文档**: 完整的技术文档和部署指南
 
 ### v1.0.0 (2026-03-30)
 - **初始发布**: 基础稳定版本
-- **核心功能**: 多智能体系统（6个智能体）
-- **集成**: Feishu Webhook集成，OpenCode CLI集成
+- **核心功能**: 多智能体系统（6 个智能体）
+- **集成**: Feishu Webhook 集成，OpenCode CLI 集成
 - **安全**: 环境变量加密，速率限制
-- **部署**: Docker和Docker Compose支持
 
 ## 核心特性
 
-### 多智能体系统
-- 协调器、OpenCode代理、飞书代理、LLM代理、内存代理、技能代理
-- 基于消息总线的异步通信
-- 智能体能力注册和发现
+### Provider 路由系统
+- OpenCode Provider:  spawning `opencode run --format json` 流式输出
+- Kimi Provider: 通过 ACP/MCP 协议集成
+- Claude Provider: Claude Code CLI 集成
+- OpenRouter Provider: 100+ 模型支持
+- 动态切换: `/kimi`, `/claude`, `/opencode`, `/openrouter`
 
 ### 飞书集成
-- Webhook事件接收（v1/v2格式）
-- WebSocket长连接支持
-- AES-192加密通信
-- 交互式卡片系统（开始、进度、结果、错误、帮助）
+- WebSocket 长连接模式（推荐，无需公网 URL）
+- Webhook 回调模式（备选，需要公网 URL）
+- 交互式卡片系统（开始、进度、结果、错误）
+- 单卡片流式更新
 
-### OpenCode集成
-- 完整的OpenCode CLI命令支持
-- 任务创建、跟踪、监控、中止
-- Server-Sent Events (SSE)实时进度流
-- 可扩展的技能系统
+### Constitutional Guard
+- 危险命令实时拦截（rm -rf, git push --force, drop database 等）
+- 会话级授权机制: `mysecret <命令>`
+- 授权状态持久化到 session
 
-### 安全特性
-- 环境变量加密存储
-- 飞书事件加密/解密
-- API端点速率限制
-- 基于Redis的会话管理
+### OpenCode 集成
+- 完整的 OpenCode CLI 命令支持
+- Session 连续性：首次自动创建，后续自动续接
+- 非 JSON 错误诊断：从 stderr 提取 API 错误原因
 
 ## 系统要求
 
 ### 软件要求
-- Python 3.8+
-- Redis 5.0+ (用于会话存储)
-- ngrok或localtunnel (用于公网访问)
+- Python 3.10+
+- systemd (用于服务管理)
+- opencode CLI (用于 OpenCode provider)
 
 ### 硬件要求
-- 内存: 最低2GB，推荐4GB
-- 存储: 最低1GB可用空间
+- 内存: 最低 2GB，推荐 4GB
+- 存储: 最低 1GB 可用空间
 - 网络: 稳定的互联网连接
 
 ## 部署选项
 
-1. **本地运行**: `python src/main.py`
-2. **Docker**: `docker-compose up`
-3. **管理脚本**: `./manage.sh start`
-4. **开发模式**: `./manage.sh dev`
+1. **systemd user service** (推荐):
+   ```bash
+   systemctl --user start vibebridge
+   systemctl --user enable vibebridge
+   ```
+2. **手动运行**:
+   ```bash
+   python -m uvicorn vibebridge.server:app --host 0.0.0.0 --port 9000
+   ```
 
 ## 配置要求
 
 ### 必需配置
-- Feishu应用ID和密钥
-- DeepSeek API密钥 (或其他LLM API密钥)
-- 加密密钥和验证令牌
+- Feishu 应用 ID 和密钥
+- 至少一个 AI provider 的 API 密钥（OpenCode 自带 DeepSeek）
+- 加密密钥和验证令牌（飞书事件订阅）
 
 ### 可选配置
-- 隧道类型 (ngrok或localtunnel)
-- Redis连接信息
-- 自定义技能配置
+- Kimi / Claude / OpenRouter API 密钥
+- Redis 连接信息（会话持久化）
 
 ## 测试状态
 
 ### 单元测试
-- ✅ 多智能体系统启动测试
-- ✅ 核心模块导入测试
-- ✅ 基本功能验证
+- ✅ Provider 健康检查测试
+- ✅ 飞书卡片渲染测试
+- ✅ 会话管理测试
+- ✅ 路由解析测试
 
 ### 集成测试
-- ✅ Feishu Webhook集成测试
-- ✅ OpenCode任务管理测试
-- ✅ 加密通信测试
-
-### API测试
-- ✅ REST API端点测试
-- ✅ 健康检查测试
-- ✅ 系统状态测试
+- ✅ Feishu WebSocket 连接测试
+- ✅ OpenCode 任务流测试
+- ✅ 多 Provider 切换测试
 
 ## 已知问题
 
-1. **测试期望值**: 部分测试的期望值需要更新以匹配实际返回值
-2. **环境依赖**: 需要正确配置环境变量才能完全运行
-3. **隧道稳定性**: 免费隧道服务可能不稳定
+1. **环境依赖**: 需要正确配置环境变量才能完全运行
+2. **API 余额**: DeepSeek 等第三方 API 可能因余额不足而失败
 
 ## 后续计划
 
-### 短期计划 (v1.1.0)
-- 测试套件完善
+### 短期计划 (v1.3.0)
+- 更多 Provider 支持（Gemini、Qwen 等）
 - 代码质量工具集成 (ruff, black, mypy)
-- API文档自动生成
+- 性能监控和告警
 
-### 中期计划 (v1.2.0)
-- 监控和告警系统
-- 性能优化和缓存改进
-- 更多自定义技能支持
-
-### 长期计划 (v2.0.0)
+### 中期计划 (v2.0.0)
 - 微服务架构重构
 - 分布式智能体支持
 - 多租户和权限管理
@@ -129,12 +128,11 @@
 ## 支持与贡献
 
 - **问题报告**: GitHub Issues
-- **文档**: 查看`docs/`目录
-- **贡献指南**: 待完善
-- **联系方式**: 通过GitHub Discussions
+- **文档**: 查看 `docs/` 目录
+- **项目地址**: https://github.com/abdrsl/vibebridge
 
 ---
 
-**版本维护**: 项目维护团队  
-**最后更新**: 2026-04-01  
+**版本维护**: 项目维护团队
+**最后更新**: 2026-06-07
 **项目状态**: 活跃开发中

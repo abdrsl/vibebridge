@@ -1,306 +1,260 @@
-# VibeBridge 自动启动和隧道切换系统
+# VibeBridge 自动启动和部署指南
 
 ## 🎯 功能特性
 
-### 1. 服务器自启动 ✅
-- 服务器意外停止时自动检测并重启
-- 支持多种启动方式（crontab/systemd）
-- PID文件管理，避免重复启动
+### 1. systemd User Service ✅
+- 服务器意外停止时自动重启
+- 用户级服务，无需 root 权限
+- 日志通过 journalctl 统一管理
 
-### 2. 隧道自动切换 ✅
-- 智能检测隧道可用性
-- 自动在ngrok、localtunnel之间切换
-- 支持添加更多隧道工具
-- 自动保存和更新Webhook URL
+### 2. WebSocket 长连接 ✅
+- 无需公网 URL 或隧道
+- 持久连接，自动重连
+- 推荐用于本地开发和个人使用
 
 ### 3. 简单管理 ✅
-- 一键启动/停止/重启
-- 实时状态查看
-- 日志自动轮转
+- systemctl 标准命令管理
+- 实时日志查看
+- 一键启停
 
 ## 📦 安装
 
-### 方法1: 使用crontab（推荐，无需root）
+### 方法1: systemd user service（推荐）
 
 ```bash
-cd /home/user/workspace/vibebridge
-./install_autostart.sh
-# 选择 1) 使用crontab
+# 创建 systemd user 目录
+mkdir -p ~/.config/systemd/user
+
+# 复制服务文件
+cp deploy/vibebridge.service ~/.config/systemd/user/
+
+# 注意：deploy/vibebridge.service 中的端口是 8000
+# 如使用 9000 端口，请编辑服务文件修改 --port 参数
+
+# 重新加载 systemd
+systemctl --user daemon-reload
+
+# 启用开机自启
+systemctl --user enable vibebridge
+
+# 启动服务
+systemctl --user start vibebridge
 ```
 
-### 方法2: 使用systemd（需要root）
+服务文件示例 (`~/.config/systemd/user/vibebridge.service`)：
 
-```bash
-cd /home/user/workspace/vibebridge
-sudo ./install_autostart.sh
-# 选择 2) 使用systemd
+```ini
+[Unit]
+Description=VibeBridge — IM gateway for local AI coding agents
+After=network.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+WorkingDirectory=/home/akliedrak/workspace/vibebridge
+Environment=PATH=/home/akliedrak/workspace/vibebridge/.venv/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PYTHONPATH=/home/akliedrak/workspace/vibebridge/src
+Environment=VIBEBRIDGE_PORT=9000
+ExecStart=/home/akliedrak/workspace/vibebridge/.venv/bin/python -m uvicorn vibebridge.server:app --host 0.0.0.0 --port 9000
+Restart=always
+RestartSec=5
+StandardOutput=append:/home/akliedrak/workspace/vibebridge/.logs/server.log
+StandardError=append:/home/akliedrak/workspace/vibebridge/.logs/server.log
+
+[Install]
+WantedBy=default.target
 ```
 
-### 方法3: 仅创建快捷命令
+### 方法2: crontab（备用）
 
 ```bash
-cd /home/user/workspace/vibebridge
-./install_autostart.sh shortcuts
-source ~/.bashrc
+# 编辑 crontab
+crontab -e
+
+# 添加以下行（每分钟检查并启动）
+* * * * * systemctl --user is-active vibebridge || systemctl --user start vibebridge
 ```
 
 ## 🚀 使用方法
 
-### 方式1: 管理脚本（推荐）
+### systemctl 标准命令
 
 ```bash
-cd /home/user/workspace/vibebridge
-./manage.sh
+# 启动服务
+systemctl --user start vibebridge
+
+# 停止服务
+systemctl --user stop vibebridge
+
+# 重启服务
+systemctl --user restart vibebridge
+
+# 查看状态
+systemctl --user status vibebridge
+
+# 启用开机自启
+systemctl --user enable vibebridge
+
+# 禁用开机自启
+systemctl --user disable vibebridge
 ```
 
-交互式菜单，选择操作：
-- 1) 启动服务（服务器+隧道）
-- 2) 停止服务
-- 3) 重启服务
-- 4) 查看状态
-- 5) 查看日志
-- 6) 仅启动隧道
-- 7) 停止隧道
-
-### 方式2: 快捷命令
-
-安装后可以使用以下命令：
+### 日志查看
 
 ```bash
-aip-start      # 启动服务
-aip-stop       # 停止服务
-aip-restart    # 重启服务
-aip-status     # 查看状态
-aip-log        # 查看日志
-aip-tunnel     # 启动隧道
+# 实时查看日志
+journalctl --user -u vibebridge -f
+
+# 查看最近 100 行
+journalctl --user -u vibebridge -n 100
+
+# 查看今天日志
+journalctl --user -u vibebridge --since today
+
+# 查看日志文件（如果配置了 StandardOutput）
+tail -f .logs/server.log
 ```
 
-### 方式3: 直接命令
+### 健康检查
 
 ```bash
-# 启动
-./manage.sh start
+# 检查服务是否运行
+curl http://localhost:9000/health
 
-# 停止
-./manage.sh stop
-
-# 重启
-./manage.sh restart
-
-# 状态
-./manage.sh status
-
-# 仅启动隧道
-./manage.sh tunnel
+# 预期输出
+{"ok":true,"providers":{"opencode":true,"kimi":true,"claude":true}}
 ```
 
 ## 📊 状态检查
 
 ```bash
-./manage.sh status
+systemctl --user status vibebridge
 ```
 
-输出示例：
-```
-==========================================
-VibeBridge 状态
-==========================================
+预期输出包含：
+- `Active: active (running)` — 服务运行中
+- `Loaded: enabled` — 已启用开机自启
 
-✅ 服务器: 运行中
-   PID: 12345
-   地址: http://127.0.0.1:8000
+## 🔧 配置文件
 
-✅ 公网隧道: 可用 (ngrok)
-   URL: https://xxxx.ngrok-free.dev
-   Webhook: https://xxxx.ngrok-free.dev/feishu/webhook/opencode
+### 环境变量
 
-==========================================
-```
-
-## 🌐 隧道自动切换
-
-### 工作原理
-
-1. **定期检查**：每5分钟检查当前隧道可用性
-2. **自动切换**：如果当前隧道不可用，自动尝试备用隧道
-3. **优先级**：
-   - 第一优先：ngrok
-   - 第二优先：localtunnel
-   - 第三优先：expose（如已安装）
-
-### 支持的隧道工具
-
-1. **ngrok**（推荐）
-   - 安装：`sudo apt install ngrok` 或从官网下载
-   - 配置：`ngrok config add-authtoken YOUR_TOKEN`
-   - 特点：稳定，URL固定
-
-2. **localtunnel**
-   - 安装：`npm install -g localtunnel`
-   - 特点：免费，无需注册
-   - 缺点：URL每次变化
-
-3. **expose**（可选）
-   - 安装：`npm install -g expose`
-   - 特点：类似ngrok
-
-### 当前URL查看
+创建 `.env` 文件：
 
 ```bash
-cat /home/user/workspace/vibebridge/logs/current_tunnel_url.txt
+# Feishu
+FEISHU_APP_ID=cli_xxx
+FEISHU_APP_SECRET=xxx
+FEISHU_ENCRYPT_KEY=xxx
+FEISHU_VERIFICATION_TOKEN=xxx
+
+# Provider API Keys（按需配置）
+DEEPSEEK_API_KEY=xxx
+KIMI_API_KEY=xxx
+OPENROUTER_API_KEY=xxx
 ```
 
-## 📁 文件说明
+### 服务配置
 
-```
-/home/user/workspace/vibebridge/
-├── auto_recovery.sh        # 自动恢复脚本（底层）
-├── manage.sh               # 管理脚本（推荐）
-├── install_autostart.sh    # 安装脚本
-├── install_services.sh     # systemd服务安装
-├── vibebridge.service      # systemd主服务
-├── vibebridge-tunnel.service  # systemd隧道服务
-├── crontab.config          # crontab配置示例
-├── logs/
-│   ├── server.log          # 服务器日志
-│   ├── ngrok.log          # ngrok日志
-│   ├── localtunnel.log    # localtunnel日志
-│   ├── auto_recovery.log  # 自动恢复日志
-│   ├── cron.log           # 定时任务日志
- │   ├── current_tunnel_url.txt    # 当前隧道URL
- │   └── current_tunnel_type.txt   # 当前隧道类型
+编辑 `~/.config/systemd/user/vibebridge.service`：
+
+```ini
+[Service]
+# 修改工作目录
+WorkingDirectory=/your/path/to/vibebridge
+
+# 修改端口
+ExecStart=... --port 9000
+
+# 修改环境变量
+Environment=YOUR_KEY=your_value
 ```
 
-## 🔧 故障排除
-
-### 服务器无法启动
+修改后重载：
 
 ```bash
-# 检查日志
-tail -100 /home/user/workspace/vibebridge/logs/server.log
+systemctl --user daemon-reload
+systemctl --user restart vibebridge
+```
 
+## 📝 管理脚本 (manage.sh)
+
+项目根目录提供 `manage.sh` 脚本作为 systemctl 的便捷封装：
+
+```bash
+./manage.sh           # 交互式菜单
+./manage.sh start     # 启动服务
+./manage.sh stop      # 停止服务
+./manage.sh restart   # 重启服务
+./manage.sh status    # 查看状态
+./manage.sh log       # 查看日志
+```
+
+## 🔄 更新部署
+
+### 更新代码后重启
+
+```bash
+cd /home/akliedrak/workspace/vibebridge
+git pull
+
+# 如果依赖有变化
+pip install -e .
+
+# 重启服务
+systemctl --user restart vibebridge
+
+# 验证
+systemctl --user status vibebridge
+curl http://localhost:9000/health
+```
+
+## 🛡️ 故障排除
+
+### 服务无法启动
+
+```bash
+# 查看详细错误
+journalctl --user -u vibebridge -n 50
+
+# 常见原因：
+# 1. 端口被占用：lsof -i :9000
+# 2. .env 文件缺失或配置错误
+# 3. Python 虚拟环境未正确设置
+# 4. 权限问题：检查工作目录和日志目录权限
+```
+
+### 端口冲突
+
+```bash
 # 检查端口占用
-lsof -i :8000
+lsof -i :9000
 
-# 手动启动查看错误
-cd /home/user/workspace/vibebridge
-source .venv/bin/activate
-python -m uvicorn src.main:app --host 0.0.0.0 --port 8000
+# 修改服务文件使用其他端口
+# 编辑 ~/.config/systemd/user/vibebridge.service
+# 将 --port 9000 改为 --port 其他端口
+systemctl --user daemon-reload
+systemctl --user restart vibebridge
 ```
 
-### 隧道无法启动
+### 日志目录权限
 
 ```bash
-# 检查ngrok
-curl http://127.0.0.1:4040/api/tunnels
-
-# 检查localtunnel
-cat /home/user/workspace/vibebridge/logs/localtunnel.log
-
-# 手动启动隧道测试
-cd /home/user/workspace/vibebridge
-ngrok http 8000
-# 或
-lt --port 8000
+mkdir -p .logs
+chmod 755 .logs
+systemctl --user restart vibebridge
 ```
 
-### 权限错误
+## 📁 目录结构
 
-```bash
-# 确保脚本可执行
-chmod +x /home/user/workspace/vibebridge/*.sh
-
-# 检查PID目录权限
-mkdir -p /home/user/workspace/vibebridge/logs/pids
 ```
-
-## 📝 手动配置crontab
-
-如果不想使用安装脚本，可以手动配置：
-
-```bash
-crontab -e
+/home/akliedrak/workspace/vibebridge/
+├── .logs/                    # 日志目录
+├── .config/systemd/user/     # systemd 服务文件
+│   └── vibebridge.service
+├── deploy/                   # 部署模板
+│   └── vibebridge.service
+├── .env                      # 环境变量
+├── src/vibebridge/           # 核心代码
+└── docs/                     # 文档
 ```
-
-添加以下内容：
-
-```cron
-# VibeBridge自动启动
-* * * * * cd /home/user/workspace/vibebridge && flock -n /tmp/vibebridge-autostart.lock -c './manage.sh start' >> /home/user/workspace/vibebridge/logs/cron.log 2>&1
-```
-
-## 🔄 更新和卸载
-
-### 更新脚本
-
-```bash
-cd /home/user/workspace/vibebridge
-git pull  # 如果有git仓库
-# 或者手动替换脚本
-```
-
-### 卸载自动启动
-
-**crontab方式：**
-```bash
-crontab -e
-# 删除包含"ai-project"的行
-```
-
-**systemd方式：**
-```bash
-sudo systemctl stop ai-project ai-project-tunnel
-sudo systemctl disable ai-project ai-project-tunnel
-sudo rm /etc/systemd/system/ai-project*.service
-sudo systemctl daemon-reload
-```
-
-### 完全清理
-
-```bash
-cd /home/user/workspace/vibebridge
-./manage.sh stop
-rm -f logs/current_tunnel_url.txt
-rm -f logs/current_tunnel_type.txt
-rm -rf logs/pids
-```
-
-## 💡 提示
-
-1. **首次启动后**，查看Webhook URL：
-   ```bash
-   ./manage.sh status
-   ```
-
-2. **更新Feishu配置**时，使用显示的URL
-
-3. **监控实时日志**：
-   ```bash
-   tail -f /home/user/workspace/vibebridge/logs/server.log
-   ```
-
-4. **定期检查**自动恢复日志：
-   ```bash
-   tail -f /home/user/workspace/vibebridge/logs/auto_recovery.log
-   ```
-
-5. **服务器重启后**，服务会自动启动（如果安装了自动启动）
-
-## 🎉 现在可以使用了！
-
-```bash
-# 1. 启动服务
-./manage.sh start
-
-# 2. 查看状态和URL
-./manage.sh status
-
-# 3. 配置Feishu使用显示的Webhook URL
-# 4. 开始使用！
-```
-
-## 📞 技术支持
-
-如有问题，请查看：
-- 服务器日志：`logs/server.log`
-- 自动恢复日志：`logs/auto_recovery.log`

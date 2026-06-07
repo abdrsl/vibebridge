@@ -1,3 +1,7 @@
+> ⚠️ **注意**: 本文档描述的是 v1.0.x 时代的开发过程或实现细节。当前版本 (v1.2.0) 已重构为 TaskOrchestrator + ProviderRouter 架构， 目录及旧版 6-agent 系统已不再使用。
+>
+> 最新架构文档请参阅：[AGENTS.md](AGENTS.md)、[NEW_FEATURES.md](NEW_FEATURES.md)
+
 # Feishu OpenCode Integration - FULLY OPERATIONAL ✅
 
 ## ✅ Accomplished

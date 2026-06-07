@@ -1,333 +1,197 @@
-# Feishu Webhook Setup
+# Feishu 设置指南
 
-## Current Tunnel Status
+## 模式选择
 
-✅ **Tunnel is running** with ngrok (stable tunnel)
+VibeBridge 支持两种与飞书通信的方式：
 
-- **Tunnel URL**: `https://unmobilized-virgen-mitotically.ngrok-free.dev`
-- **Webhook Endpoint**: `https://unmobilized-virgen-mitotically.ngrok-free.dev/feishu/webhook/opencode`
-- **Response Time**: ~1.9-2.0 seconds (within Feishu's 3-second limit)
-- **Encryption**: **ENABLED** (Using provided encryption key and verification token)
-- **Encryption Test**: **PASSED** ✅ (Encryption/decryption and signature verification tested)
-- **Status**: **FULLY OPERATIONAL** ✅ (URL verification successful + Live message processing verified + Encryption tested)
+| 特性 | WebSocket (推荐) | Webhook |
+|------|------------------|---------|
+| 公网 URL 需要 | ❌ 不需要 | ✅ 需要 |
+| 设置复杂度 | 低 | 中等（需要隧道/代理） |
+| 实时卡片 | ✅ 完整支持 | ✅ 完整支持 |
+| 适用场景 | 本地开发、个人使用 | 生产服务器 |
 
-## ✅ Live Test Results
+当前默认模式：**WebSocket**
 
-**Message Received**: `"@我的个人助手 请你访问一下workspace/ai-project 目录"`
-**OpenCode Response**: Successfully listed directory structure and analyzed project
-**Result**: FastAPI project with OpenCode CLI + Feishu integration identified
-**Time to Complete**: ~2-3 seconds (within Feishu limits)
+---
 
-## Steps to Configure Feishu Webhook
+## WebSocket 模式设置（推荐）
 
-1. **Login to Feishu Developer Console**
-   - Go to [https://open.feishu.cn/app](https://open.feishu.cn/app)
-   - Select your app (App ID: `cli_xxxxxxxxxxxxxxxx`)
+### 1. 登录飞书开发者平台
 
-2. **Navigate to Event Subscription**
-   - In the left sidebar, click "Event Subscription"
-   - Under "Request URL", click "Edit"
+- 访问 [https://open.feishu.cn/app](https://open.feishu.cn/app)
+- 选择你的应用
 
-3. **Enter Webhook URL**
-    - **URL**: `https://unmobilized-virgen-mitotically.ngrok-free.dev/feishu/webhook/opencode`
-    - **Verification Token**: `1PCumkwcAySWFrsg3p2bkhetQXMOHdgM`
-    - **Encrypt Key**: `7a3sd20f323AbdurusulSalamat`
-    - **Important**: Enable encryption in Feishu console (toggle "启用加密" to ON)
-    - Click "Save"
+### 2. 配置事件订阅
 
-4. **Verify Configuration**
-   - Feishu will send a `url_verification` request
-   - The server will automatically respond with the challenge
-   - If successful, Feishu will show "Configuration successful"
+1. 在左侧菜单点击 **"事件订阅"**
+2. 启用 **"使用长连接接收消息"** (Use long connection to receive messages)
+3. **不需要配置 Request URL** — WebSocket 会处理一切
 
-5. **Subscribe to Events**
-   - Under "Subscribe to events", add:
-     - `im.message.receive_v1` (接收消息)
-   - Click "Save"
+### 3. 订阅事件
 
-6. **Enable Permissions**
-   - Go to "Permissions" section
-   - Enable: `im:message` (发送和接收消息)
-   - Enable: `im:message:send_as_bot` (以机器人身份发送消息)
-   - Submit for review if required
+在 **"订阅事件"** 中添加：
 
-## Tunnel Management
+- `im.message.receive_v1` — 接收消息
+- `im.message.message_read_v1` (可选) — 消息已读
 
-### Current Tunnel (ngrok)
+### 4. 开启权限
+
+进入 **"权限管理"** 页面，开启以下权限：
+
+- `im:message` — 发送和接收消息
+- `im:message:send_as_bot` — 以机器人身份发送消息
+- `im:chat:readonly` — 读取群信息（可选）
+
+### 5. 发布应用
+
+- 进入 **"版本管理与发布"**
+- 点击 **"创建版本"**
+- 填写版本信息后发布
+
+### 6. 启动 VibeBridge
 
 ```bash
-# Check tunnel status
-ps aux | grep ngrok
+# systemd user service 方式（推荐）
+systemctl --user start vibebridge
+systemctl --user enable vibebridge
 
-# View tunnel logs
-tail -f logs/ngrok.log
-
-# Restart tunnel (if needed)
-./manage.sh stop-tunnel
-./manage.sh tunnel
+# 查看 WebSocket 连接状态
+journalctl --user -u vibebridge -f | grep "WebSocket\|connected"
 ```
 
-**Note**: ngrok provides stable URLs with the free tier. The URL changes only if you restart ngrok or after 2 hours of inactivity.
-
-### Alternative Tunnels
-
-#### Option 1: ngrok (Recommended for Production)
-
-**Prerequisite**: Get a free ngrok v3 authtoken from [ngrok.com](https://ngrok.com)
+### 7. 验证连接
 
 ```bash
-# Install ngrok (already installed)
-# Configure with your authtoken
-./start_ngrok.sh <your-ngrok-v3-authtoken>
-
-# Tunnel will start on https://xxxx-xx-xxx-xxx-xxx.ngrok-free.app
+curl http://localhost:9000/health
+# 预期输出: {"ok":true,"providers":{"opencode":true,...}}
 ```
 
-#### Option 2: Serveo.net
+在飞书中 @机器人发送 `hello`，应收到回复。
+
+---
+
+## Webhook 模式设置
+
+如需要使用 Webhook 模式（例如部署在有公网 IP 的服务器上）：
+
+### 1. 配置 Request URL
+
+1. 在飞书开发者平台 **"事件订阅"** 中关闭 **"使用长连接接收消息"**
+2. 在 **"Request URL"** 中填入你的公网地址：
+   ```
+   https://your-domain.com/feishu/webhook
+   ```
+3. 配置 **Verification Token** 和 **Encrypt Key**（与 `.env` 中的值一致）
+
+### 2. 订阅事件和权限
+
+与 WebSocket 模式相同，订阅 `im.message.receive_v1` 并开启 `im:message` 权限。
+
+### 3. 切换 VibeBridge 模式
 
 ```bash
-ssh -o StrictHostKeyChecking=no -R 80:localhost:8000 serveo.net
+# 编辑设置
+nano config/settings.json
 ```
 
-#### Option 3: Cloudflare Tunnel (Most Reliable)
+修改为：
+```json
+{
+  "feishu_mode": "webhook",
+  "websocket_enabled": false
+}
+```
 
-Requires Cloudflare account and `cloudflared` installation.
+重启服务：
+```bash
+systemctl --user restart vibebridge
+```
 
-## Testing
+---
 
-### Manual Test (URL Verification)
+## 隧道工具（Webhook 模式需要）
+
+如果你在本地开发且没有公网 IP，可以使用隧道工具：
+
+### ngrok
 
 ```bash
-curl -X POST https://d9a8a092e184bf.lhr.life/feishu/webhook/opencode \
+# 安装 ngrok
+# 配置 authtoken
+ngrok config add-authtoken YOUR_TOKEN
+
+# 启动隧道
+ngrok http 9000
+```
+
+### Cloudflare Tunnel
+
+```bash
+# 安装 cloudflared
+cloudflared tunnel --url http://localhost:9000
+```
+
+### Serveo.net
+
+```bash
+ssh -o StrictHostKeyChecking=no -R 80:localhost:9000 serveo.net
+```
+
+---
+
+## 测试
+
+### 手动测试（URL 验证）
+
+```bash
+curl -X POST https://your-domain.com/feishu/webhook \
   -H "Content-Type: application/json" \
-  -d '{"token": "z3V8Qc6B3NqXjaKpP5rL9sT2uV1yW4x7A0D4F6H9K2M", "challenge": "test_challenge", "type": "url_verification"}'
+  -d '{"token": "your_verification_token", "challenge": "test_challenge", "type": "url_verification"}'
 ```
 
-Expected response:
+预期响应：
 ```json
 {"challenge":"test_challenge"}
 ```
 
-### Encrypted Message Test
+### 消息测试
+
+在飞书中 @机器人发送任意消息，观察日志：
 
 ```bash
-python send_encrypted_test.py
+journalctl --user -u vibebridge -f
 ```
 
-## Troubleshooting
+---
 
-### 1. Tunnel Not Responding
-- Check if server is running: `ps aux | grep uvicorn`
-- Check server logs: `tail -f logs/server_final.log`
-- Check tunnel logs: `tail -f logs/lhr_tunnel.log`
+## 故障排除
 
-### 2. Feishu Verification Fails
-- Ensure Verification Token matches exactly (case-sensitive)
-- Ensure webhook URL is accessible from public internet
-- Check server logs for decryption errors
+### 1. WebSocket 无法连接
+- 检查 `FEISHU_APP_ID` 和 `FEISHU_APP_SECRET` 是否正确
+- 检查应用是否已发布
+- 查看日志中的连接错误信息
 
-### 3. Response Time Exceeds 3 Seconds
-- localhost.run may have variable latency
-- Consider switching to ngrok or Cloudflare Tunnel
-- Optimize server code (already done - background tasks, reduced logging)
+### 2. 飞书验证失败
+- 确保 Verification Token 完全匹配（区分大小写）
+- webhook URL 必须能从公网访问
+- 检查服务器日志中的解密错误
 
-### 4. Encryption Errors
-- Ensure `FEISHU_ENCRYPT_KEY` in `.env` is exactly 43 characters (base64)
-- Current key: `z8V8Qc6B3NqXjwKpP5rL9sT2uV1yW4x7A0D3F6H9K2M` (first 43 chars used)
+### 3. 响应时间超过 3 秒
+- 免费隧道服务可能有延迟波动
+- 考虑使用 ngrok 或 Cloudflare Tunnel
+- 优化代码（已内置后台任务处理）
 
-### 5. "Challenge code没有返回" (Feishu URL Verification Failed)
+### 4. 加密错误
+- 确保 `FEISHU_ENCRYPT_KEY` 在 `.env` 中恰好 43 个字符（base64）
+- 飞书控制台中的加密密钥必须与服务端一致
 
-If Feishu reports "Challenge code没有返回", the webhook endpoint is not returning the correct challenge response. This is usually caused by:
+### 5. "Challenge code 没有返回"
+- 加密密钥不匹配
+- 飞书控制台加密未启用/禁用，但服务端期望相反
+- 解密失败
 
-**Possible Causes:**
-1. **Encryption key mismatch** - The Encrypt Key in Feishu platform doesn't match the one in `.env`
-2. **Encryption disabled in Feishu** - Feishu is sending encrypted payloads but your app expects unencrypted
-3. **Decryption failure** - Server cannot decrypt the encrypted payload
-
-**Solution Steps:**
-
-**Step 1: Check Feishu Platform Configuration**
-1. Login to [Feishu Developer Console](https://open.feishu.cn/app)
-2. Go to "Event Subscription"
-3. Check the **Encrypt Key** field:
-   - Should be exactly 43 characters (base64 without padding)
-   - Example: `z8V8Qc6B3NqXjwKpP5rL9sT2uV1yW4x7A0D3F6H9K2M` (43 chars)
-   - If longer than 43 chars, use only the first 43 characters
-4. Check **Verification Token**:
-   - Should match exactly (case-sensitive)
-   - Current token: `z3V8Qc6B3NqXjaKpP5rL9sT2uV1yW4x7A0D4F6H9K2M`
-
-**Step 2: Update `.env` File**
-If Feishu Encrypt Key is different, update `.env`:
-```bash
-# Edit .env file
-FEISHU_ENCRYPT_KEY=your_actual_43_char_key_from_feishu
-FEISHU_VERIFICATION_TOKEN=your_verification_token_from_feishu
-```
-
-**Step 3: Restart Server**
-```bash
-cd /home/user/workspace/vibebridge
-pkill -f "uvicorn" 2>/dev/null || true
-source .venv/bin/activate
-uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload > logs/server_final.log 2>&1 &
-```
-
-**Step 4: Test URL Verification (Unencrypted)**
-```bash
-curl -X POST https://unmobilized-virgen-mitotically.ngrok-free.dev/feishu/webhook/opencode \
-  -H "Content-Type: application/json" \
-  -d '{"token": "YOUR_VERIFICATION_TOKEN", "challenge": "test123", "type": "url_verification"}'
-```
-Expected response: `{"challenge":"test123"}`
-
-**Step 5: If Still Failing - Try Disabling Encryption in Feishu**
-1. In Feishu Event Subscription, find encryption settings
-2. Try disabling encryption (if option available)
-3. Save and retry URL verification
-
-**Step 6: Debug Server Logs**
-```bash
-tail -f logs/server_final.log
-```
-Look for `[Crypto]` or `[Webhook]` messages to identify decryption errors.
-
-### 6. Tunnel URL Changes (serveo.net specific)
-
-serveo.net tunnels are **temporary** and change each time you restart the tunnel. If Feishu reports "返回数据不是合法的JSON格式", the tunnel URL may have changed.
-
-**Current Tunnel URL**: `https://unmobilized-virgen-mitotically.ngrok-free.dev`
-
-**To restart tunnel and get new URL:**
-
-```bash
-cd /home/user/workspace/vibebridge
-pkill -f "serveo" 2>/dev/null || true
-ssh -o StrictHostKeyChecking=no -R 80:localhost:8000 serveo.net > logs/serveo.log 2>&1 &
-sleep 3
-grep "serveousercontent" logs/serveo.log | grep -o "https://[^ ]*" | head -1
-```
-
-**Update Feishu configuration** with the new URL shown above.
-
-## ✅ Completed Steps
-
-1. ✅ Configure Feishu webhook URL with the tunnel URL
-2. ✅ Send test message to the bot in Feishu
-3. ✅ Verify OpenCode task creation and interactive card response
-4. ✅ Monitor performance (response times under 3 seconds)
-
-## 🔧 Next Enhancement Opportunities
-
-1. **Fix Encryption**: Re-enable encryption in Feishu console and fix decryption issues
-2. **Task Persistence**: Store OpenCode tasks to files for auditing/debugging
-3. **Advanced Testing**: Test more complex development tasks and edge cases
-4. **Production Tunnel**: Set up ngrok or Cloudflare Tunnel for more reliable access
-5. **Monitoring**: Add monitoring for task success rates and response times
-
-## 📱 Mobile-Friendly Configuration Guide
-
-### Quick Setup from Mobile Device
-
-1. **Copy Webhook URL**:
-   ```
-   https://unmobilized-virgen-mitotically.ngrok-free.dev/feishu/webhook/opencode
-   ```
-   
-2. **Open Feishu Developer Console** on mobile browser:
-   - Visit: https://open.feishu.cn/app
-   - Login with your Feishu account
-   
-3. **Configure Event Subscription**:
-   - Paste the Webhook URL in "Request URL" field
-   - Set Verification Token: `z3V8Qc6B3NqXjaKpP5rL9sT2uV1yW4x7A0D4F6H9K2M`
-   - Set Encrypt Key: `z8V8Qc6B3NqXjwKpP5rL9sT2uV1yW4x7A0D3F6H9K2M`
-   - **Important**: Disable encryption toggle (设置加密为关闭)
-   
-4. **Subscribe to Events**:
-   - Add `im.message.receive_v1` (接收消息)
-   
-5. **Enable Permissions**:
-   - Enable `im:message` (发送和接收消息)
-   - Enable `im:message:send_as_bot` (以机器人身份发送消息)
-
-### Troubleshooting on Mobile
-
-- **URL Verification Fails**: Ensure you copied the entire URL including `https://`
-- **Connection Timeout**: The tunnel may be restarting, wait 30 seconds and try again
-- **Encryption Errors**: Keep encryption disabled for initial setup
-- **QR Code Alternative**: Consider generating a QR code with the webhook URL for easier entry
-
-### Monitoring from Mobile
-
-- Check tunnel status: `curl https://unmobilized-virgen-mitotically.ngrok-free.dev/health`
-- URL changes will be automatically notified in Feishu chat
-- Use simple text commands: `模型`, `kimi`, `deepseek`, `清空session`, `启动服务器`, `git 提交`
-
-## Files Reference
-
-- `src/legacy/main.py` - Webhook endpoint (`/feishu/webhook/opencode`)
-- `src/legacy/feishu_crypto.py` - Encryption/decryption utilities
-- `src/legacy/feishu_client.py` - Feishu API client and card builders
-- `src/legacy/opencode_integration.py` - OpenCode task execution
-- `src/legacy/task_store.py` - JSON file-based task storage
-- `TUNNEL_SETUP.md` - Detailed tunnel comparison guide
-- `start_ngrok.sh` - Ngrok setup script
-
-## 🔌 Feishu WebSocket 长连接配置（实验性）
-
-### 概述
-Feishu WebSocket 长连接提供了比传统Webhook更实时、更稳定的消息接收方式。此功能为实验性功能，需要飞书事件订阅2.0支持。
-
-### 启用步骤
-
-1. **更新环境配置** (`.env`文件):
-   ```bash
-   # 启用WebSocket长连接
-   FEISHU_WEBSOCKET_ENABLED=true
-   
-   # WebSocket服务器URL（请参考飞书官方文档更新）
-   FEISHU_WEBSOCKET_URL=wss://open.feishu.cn/stream
-   ```
-
-2. **重启服务器**:
-   ```bash
-   ./manage.sh restart
-   ```
-
-3. **验证连接**:
-   - 检查服务器日志中是否有WebSocket连接成功信息
-   - 运行测试脚本: `python tests/test_websocket.py`
-
-### 注意事项
-
-⚠️ **重要提示**:
-- WebSocket URL可能需要根据飞书官方文档更新
-- 需要飞书事件订阅2.0权限
-- 与Webhook模式可以共存，但建议只启用一种
-- 当前为实验性实现，生产环境请充分测试
-
-### 技术实现
-
-- **核心文件**: `src/feishu_websocket.py`
-- **集成点**: `src/main.py` 中的lifespan管理
-- **消息处理**: 复用现有的 `feishu_webhook_handler.py` 和 `feishu_card_handler.py`
-
-### 故障排除
-
-1. **连接失败**:
-   - 检查访问令牌是否有效
-   - 验证WebSocket URL是否正确
-   - 查看飞书官方事件订阅2.0文档
-
-2. **消息未处理**:
-   - 确保飞书应用有相应的事件订阅权限
-   - 检查WebSocket消息格式是否符合预期
-
-3. **性能问题**:
-   - 调整 `ping_interval` 和 `reconnect_interval` 参数
-   - 监控连接稳定性
-
-### 相关文档
-- [飞书事件订阅2.0文档](https://open.feishu.cn/document/ukTMukTMukTM/uYDNxYjL2QTM24iN0EjN/event-subscription-configure-/event-subscription-2-0)
-- [WebSocket客户端测试](tests/test_websocket.py)
+**解决步骤**：
+1. 检查飞书平台配置，确保加密状态与服务端一致
+2. 确认 `.env` 中的 `FEISHU_ENCRYPT_KEY` 正确
+3. 查看服务端日志确认解密是否成功
