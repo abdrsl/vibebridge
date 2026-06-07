@@ -190,7 +190,7 @@ class AgentResultBridge:
             return
 
         try:
-            if self._contains_markdown(text):
+            if self._contains_markdown(text) and hasattr(self._feishu, "send_markdown"):
                 await self._feishu.send_markdown(chat_id, text, bot_id=bot_id)
             elif hasattr(self._feishu, "send_text"):
                 await self._feishu.send_text(chat_id, text, bot_id=bot_id)

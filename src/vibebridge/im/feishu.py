@@ -229,9 +229,10 @@ class FeishuMultiBotManager(BaseIMAdapter):
 
         text = content_obj.get("text", "").strip() if isinstance(content_obj, dict) else ""
 
-        # Clean @mentions
+        # Clean Feishu <at> tags (e.g. <at user_id="xxx">@name</at>)
         text = re.sub(r"<at[^>]*>.*?</at>", "", text)
-        text = re.sub(r"^\s*@[^\s]+\s*", "", text)
+        # Only strip leading @_user_XX patterns (user mentions, not agent mentions)
+        text = re.sub(r"^\s*@_[^\s]+\s*", "", text)
         text = text.strip()
 
         chat_type = message.get("chat_type", "")
