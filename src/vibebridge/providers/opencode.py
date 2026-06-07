@@ -393,7 +393,13 @@ class OpenCodeProvider(BaseProvider):
                             task_id=task_id,
                         )
                     else:
-                        error_msg = task.error or diagnostic or "OpenCode 未产生任何输出"
+                        if not diagnostic:
+                            diagnostic = (
+                                "OpenCode 在 headless 模式下未返回任何文本内容。"
+                                "这是 OpenCode v1.16.x 的已知限制。"
+                                "建议切换到 Kimi 或 Claude provider：发送 /kimi 或 /claude"
+                            )
+                        error_msg = task.error or diagnostic
                         await self._update_task(
                             task_id,
                             status=TaskStatus.FAILED,
