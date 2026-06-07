@@ -349,8 +349,23 @@ class OpenCodeManager:
         }
 
         try:
-            # 使用绝对路径确保找到 opencode
-            opencode_path = os.path.expanduser("~/.nvm/versions/node/v24.14.0/bin/opencode")
+            # 自动检测 opencode 路径（支持 OPENCODE_BINARY 环境变量覆盖）
+            opencode_path = os.environ.get("OPENCODE_BINARY") or shutil.which("opencode")
+            if not opencode_path:
+                home = Path.home()
+                candidates = [
+                    home / ".nvm/versions/node/v24.14.0/bin/opencode",
+                    home / ".nvm/versions/node/v22.14.0/bin/opencode",
+                    home / ".nvm/versions/node/v20.11.0/bin/opencode",
+                    home / ".local/bin/opencode",
+                    home / ".npm-global/bin/opencode",
+                ]
+                for c in candidates:
+                    if c.exists():
+                        opencode_path = str(c)
+                        break
+            if not opencode_path:
+                raise FileNotFoundError("OpenCode CLI not found. Set OPENCODE_BINARY or install opencode.")
             cmd = [
                 opencode_path,
                 "run",

@@ -35,12 +35,14 @@ def build_providers(config) -> dict[str, BaseProvider]:
 
     if config.kimi.enabled:
         providers["kimi"] = KimiProvider(
-            acp_url=config.kimi.acp_url,
+            binary=None if config.kimi.binary == "auto" else config.kimi.binary,
+            default_workdir=config.kimi.default_workdir,
         )
 
     if config.claude.enabled:
         providers["claude"] = ClaudeProvider(
             binary=None if config.claude.binary == "auto" else config.claude.binary,
+            default_workdir=config.claude.default_workdir,
         )
 
     if config.openrouter.enabled:

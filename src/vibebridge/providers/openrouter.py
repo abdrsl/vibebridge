@@ -32,6 +32,7 @@ class OpenRouterProvider(BaseProvider):
         self.base_url = base_url
         self._client: httpx.AsyncClient | None = None
         self._tasks: dict[str, asyncio.Task] = {}
+        self._task_contexts: dict[str, dict[str, str]] = {}
 
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create HTTP client."""
@@ -72,6 +73,14 @@ class OpenRouterProvider(BaseProvider):
         """Create a task and return task_id."""
         task_id = f"openrouter_{session_id}_{hash(prompt) & 0xFFFFFFFF}"
         
+        # Store task context so stream_task can access the original prompt
+        self._task_contexts[task_id] = {
+            "prompt": prompt,
+            "workdir": workdir,
+            "session_id": session_id,
+            "chat_id": chat_id or "",
+        }
+        
         # Start the task in background
         task = asyncio.create_task(self._execute_task(task_id, prompt, workdir))
         self._tasks[task_id] = task
@@ -81,16 +90,18 @@ class OpenRouterProvider(BaseProvider):
     async def _execute_task(self, task_id: str, prompt: str, workdir: str):
         """Execute the task and store result."""
         try:
-            # This is a placeholder - actual execution would happen in stream_task
             logger.info(f"OpenRouter task {task_id} created for prompt: {prompt[:100]}...")
         except Exception as e:
             logger.error(f"Error in OpenRouter task {task_id}: {e}")
 
     async def stream_task(self, task_id: str) -> AsyncIterator[StreamEvent]:
         """Stream task execution using OpenRouter API."""
-        # Get the prompt from task context (in real implementation, we'd store it)
-        # For now, we'll use a dummy prompt
-        prompt = "Execute the user's request"
+        # Retrieve the original prompt from task context
+        ctx = self._task_contexts.get(task_id, {})
+        prompt = ctx.get("prompt", "")
+        if not prompt:
+            logger.warning(f"OpenRouter task {task_id}: no prompt found in context, using fallback")
+            prompt = "Execute the user's request"
         
         try:
             client = await self._get_client()
@@ -184,9 +195,11 @@ class OpenRouterProvider(BaseProvider):
                 task_id=task_id,
             )
         finally:
-            # Clean up task
+            # Clean up task and context
             if task_id in self._tasks:
                 del self._tasks[task_id]
+            if task_id in self._task_contexts:
+                del self._task_contexts[task_id]
 
     async def cancel_task(self, task_id: str) -> bool:
         """Cancel a running task."""

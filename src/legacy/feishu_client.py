@@ -88,6 +88,49 @@ class FeishuClient:
 
             return result
 
+    def _is_cascade_trigger(self, text: str) -> bool:
+        """检查消息是否是引发级联回复的触发器
+        
+        防止Agent发送会导致其他Agent再次回复的指令性消息，
+        如"请做自我介绍"、"@所有人介绍"等。
+        """
+        import re
+        text_lower = text.lower()
+        
+        # 级联触发关键词组合
+        cascade_patterns = [
+            # 自我介绍相关
+            r"请.*自我介绍",
+            r"请.*介绍.*自己",
+            r"大家.*介绍",
+            r"各位.*介绍",
+            r"依次.*介绍",
+            r"按顺序.*介绍",
+            r"来做.*介绍",
+            r"做一下.*介绍",
+            # 指令性@所有人
+            r"@所有人.*请",
+            r"@所有人.*介绍",
+            r"@所有人.*回复",
+            r"@所有人.*发言",
+            r"@_all.*请",
+            r"@_all.*介绍",
+            # 要求回复
+            r"请.*回复",
+            r"请.*发言",
+            r"请.*依次",
+            r"请.*按顺序",
+            r"接下来.*请",
+            r"请各位.*",
+            r"请大家.*",
+        ]
+        
+        for pattern in cascade_patterns:
+            if re.search(pattern, text_lower):
+                return True
+        
+        return False
+
     async def get_tenant_access_token(self) -> str | None:
         import time
 
@@ -138,6 +181,11 @@ class FeishuClient:
                 f"[Feishu] Error: No receive_id provided for text message (type: {receive_id_type})"
             )
             return {"error": "No receive_id provided"}
+
+        # 防级联保护：阻止Agent发送会引发其他Agent回复的指令性消息
+        if self._is_cascade_trigger(text):
+            print(f"[Feishu] BLOCKED cascade-triggering message: {text[:80]}...")
+            return {"error": "Cascade trigger blocked", "blocked": True}
 
         print(
             f"[Feishu] Sending text message to {receive_id[:10]}... (type: {receive_id_type}), length: {len(text)}"
@@ -218,6 +266,12 @@ class FeishuClient:
         if not receive_id:
             print(f"[Feishu] Error: No receive_id provided (type: {receive_id_type})")
             return {"error": "No receive_id provided"}
+
+        # 检查卡片内容是否包含级联触发器
+        card_text = json.dumps(card)
+        if self._is_cascade_trigger(card_text):
+            print(f"[Feishu] BLOCKED cascade-triggering card message")
+            return {"error": "Cascade trigger blocked", "blocked": True}
 
         print(f"[Feishu] Getting access token, app_id={self.app_id[:5]}...")
         token = await self.get_tenant_access_token()
@@ -500,6 +554,29 @@ class FeishuClient:
         except Exception as e:
             print(f"[Feishu] Error updating interactive card: {e}")
             return {"code": -1, "error": str(e)}
+
+    async def send_card_with_id(
+        self,
+        receive_id: str | None,
+        card: dict[str, Any],
+        receive_id_type: str = "chat_id",
+    ) -> tuple[bool, str | None]:
+        """Send an interactive card and return (success, message_id)."""
+        result = await self.send_interactive_card(receive_id, card, receive_id_type)
+        if result and "data" in result and isinstance(result["data"], dict):
+            msg_id = result["data"].get("message_id")
+            if msg_id:
+                return True, msg_id
+        return False, None
+
+    async def update_card(
+        self,
+        message_id: str,
+        card: dict[str, Any],
+    ) -> bool:
+        """Update an existing interactive card. Returns True on success."""
+        result = await self.update_interactive_card(message_id, card)
+        return result and isinstance(result, dict) and result.get("code") == 0
 
 
 def build_start_card(task_id: str, user_message: str) -> dict:

@@ -19,6 +19,8 @@ class FeishuBotConfig(BaseModel):
     encrypt_key: str = ""
     verification_token: str = ""
     enabled: bool = True
+    chat_id: str = ""         # default group chat id for this bot
+    p2p_chat_id: str = ""     # default p2p chat id for this bot
 
 
 class FeishuConfig(BaseModel):
@@ -42,12 +44,15 @@ class OpenCodeProviderConfig(BaseModel):
 
 class KimiProviderConfig(BaseModel):
     enabled: bool = False
+    binary: str = "auto"
+    default_workdir: str = "~/workspace"
     acp_url: str = "http://127.0.0.1:9876"
 
 
 class ClaudeProviderConfig(BaseModel):
     enabled: bool = False
     binary: str = "auto"
+    default_workdir: str = "~/workspace"
 
 
 class OpenRouterProviderConfig(BaseModel):

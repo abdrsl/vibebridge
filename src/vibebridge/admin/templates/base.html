@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% block title %}MyCompany Admin{% endblock %}</title>
+  <title>{% block title %}VibeBridge Admin{% endblock %}</title>
   <script src="https://unpkg.com/htmx.org@1.9.12"></script>
   <style>
     :root { --bg:#0f172a; --card:#1e293b; --text:#e2e8f0; --accent:#38bdf8; --ok:#22c55e; --warn:#f59e0b; --err:#ef4444; }
@@ -36,7 +36,7 @@
 </head>
 <body>
   <header>
-    <h1>🏢 MyCompany Admin</h1>
+    <h1>🏢 VibeBridge Admin</h1>
     <nav>
       <a href="/admin" class="{% if request.url.path == '/admin' %}active{% endif %}">Dashboard</a>
       <a href="/admin/bots" class="{% if request.url.path == '/admin/bots' %}active{% endif %}">Bots</a>

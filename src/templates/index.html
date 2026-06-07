@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>MyCompany Control Panel</title>
+<title>VibeBridge Control Panel</title>
 <style>
 :root{--bg:#0d1117;--card:#161b22;--border:#30363d;--text:#c9d1d9;--dim:#8b949e;--blue:#58a6ff;--green:#3fb950;--red:#f85149}
 *{margin:0;padding:0;box-sizing:border-box}
@@ -36,7 +36,7 @@ pre{background:var(--bg);padding:10px;border-radius:6px;font-size:11px;max-heigh
 </head>
 <body>
 <div class="sidebar">
-<h2>🏢 MyCompany</h2>
+<h2>🏢 VibeBridge</h2>
 <a class="active" onclick="tab('dash')">📊 Dashboard</a>
 <a onclick="tab('chat')">💬 Chat</a>
 <a onclick="tab('config')">⚙️ Config</a>
@@ -110,7 +110,7 @@ async function chatSend(){
 // CONFIG
 async function loadConfig(){
  let c=await api('/api/config');let s=c.secrets||[],bots=c.bots||[];
- document.getElementById('config-keys').innerHTML=s.length?s.map(x=>'<div class="row"><span class="l">'+x.name+'</span><span class="v">'+x.masked+'</span></div>').join(''):'<div style="color:var(--dim)">Run: mycompany setup</div>';
+ document.getElementById('config-keys').innerHTML=s.length?s.map(x=>'<div class="row"><span class="l">'+x.name+'</span><span class="v">'+x.masked+'</span></div>').join(''):'<div style="color:var(--dim)">Run: vibebridge setup</div>';
  document.getElementById('config-bots').innerHTML=bots.map(x=>'<div class="row"><span class="l">'+x.agent+'</span><span class="v">'+x.bot_name+'</span><span class="badge '+(x.enabled?'g':'r')+'">'+(x.enabled?'on':'off')+'</span></div>').join('');
 }
 // SESSIONS

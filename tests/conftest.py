@@ -4,12 +4,13 @@ import os
 import sys
 
 # Ensure src is on path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+src_path = os.path.join(os.path.dirname(__file__), "..", "src")
+sys.path.insert(0, src_path)
 
-# Legacy tests are skipped by default because they rely on the old
-# architecture, network access, or event loops that can hang in CI.
-# Run them explicitly with: pytest tests/ -m legacy
+# Enable pytest-asyncio auto mode
 import pytest
+
+pytest_plugins = ("pytest_asyncio",)
 
 
 def pytest_collection_modifyitems(config, items):

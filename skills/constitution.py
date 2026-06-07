@@ -76,6 +76,27 @@ class Constitution:
                 enforcement="reject",
             ),
             ConstitutionalRule(
+                id="destructive-ops-1",
+                description="Destructive operations require explicit authorization",
+                rule_text="The AI must not execute destructive operations (delete, drop, format, force-push, etc.) without explicit user authorization via 'mysecret <command>'.",
+                priority=10,
+                enforcement="reject",
+            ),
+            ConstitutionalRule(
+                id="destructive-ops-2",
+                description="Privileged escalation requires authorization",
+                rule_text="The AI must not execute commands with sudo, su, or other privilege escalation without explicit authorization via 'mysecret <command>'.",
+                priority=10,
+                enforcement="reject",
+            ),
+            ConstitutionalRule(
+                id="destructive-ops-3",
+                description="System shutdown commands require authorization",
+                rule_text="The AI must not execute shutdown, reboot, halt, or poweroff commands without explicit authorization via 'mysecret <command>'.",
+                priority=10,
+                enforcement="reject",
+            ),
+            ConstitutionalRule(
                 id="helpfulness-1",
                 description="Be helpful, honest, and transparent",
                 rule_text="The AI should provide accurate information and acknowledge its limitations when uncertain.",

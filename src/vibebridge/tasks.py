@@ -12,6 +12,7 @@ from .cards.error import render_error_card
 from .cards.progress import render_progress_card
 from .cards.result import render_result_card
 from .cards.start import render_start_card
+from .constitution_guard import is_auth_message, parse_auth_message
 from .history import get_history_manager
 from .im.base import BaseIMAdapter, InboundMessage
 from .providers.base import BaseProvider, StreamEventType
@@ -60,6 +61,69 @@ class TaskOrchestrator:
     async def handle_message(self, message: InboundMessage) -> dict:
         """Main entry point for incoming IM messages."""
         
+        # ── Provider switch commands ────────────────────────────────────
+        switch_target = self.router.is_switch_command(message.text)
+        if switch_target:
+            session = self.sessions.get_or_create(
+                user_id=message.sender_id,
+                chat_id=message.chat_id,
+                provider=switch_target,
+            )
+            # Only update if actually changed
+            if session.provider != switch_target:
+                self.sessions.update_provider(session.session_id, switch_target)
+                session.provider = switch_target
+            provider_obj = self.router.providers.get(switch_target)
+            display = provider_obj.display_name if provider_obj else switch_target
+            await self._safe_send_text(
+                message.chat_id,
+                f"✅ 已切换到 **{display}** 模式\n\n下次发送消息时将使用 {display} 执行。"
+            )
+            return {"status": "switched", "provider": switch_target}
+        
+        # ── Constitutional Guard: authorization commands ────────────────
+        if is_auth_message(message.text):
+            auth_op = parse_auth_message(message.text)
+            session = self.sessions.get_or_create(
+                user_id=message.sender_id,
+                chat_id=message.chat_id,
+            )
+            if auth_op:
+                session.authorize(auth_op)
+                # Propagate to provider
+                provider_obj = self.router.providers.get(session.provider)
+                if provider_obj and hasattr(provider_obj, "authorize"):
+                    provider_obj.authorize(session.session_id, auth_op)
+                await self._safe_send_text(
+                    message.chat_id,
+                    f"✅ 已授权操作：`{auth_op}`\n"
+                    f"当前 session 后续执行此操作将不再拦截。",
+                )
+            else:
+                await self._safe_send_text(
+                    message.chat_id,
+                    "⚠️ 授权格式：`mysecret <操作描述>`\n"
+                    "例如：`mysecret rm -rf dist/`",
+                )
+            
+            # If there was a blocked prompt, re-run it
+            if auth_op and session.pending_prompt:
+                pending = session.pending_prompt
+                session.pending_prompt = ""
+                self.sessions.save(session)
+                await self._safe_send_text(
+                    message.chat_id,
+                    f"🔄 正在重新执行上次的指令...",
+                )
+                # Re-run with the pending prompt
+                asyncio.create_task(
+                    self._rerun_with_prompt(message, pending)
+                )
+            else:
+                self.sessions.save(session)
+            
+            return {"status": "authorized", "operation": auth_op or ""}
+        
         # 检查是否是审批命令
         if message.text.strip().startswith("/approve"):
             result = await self.approval_manager.handle_approval_command(
@@ -78,8 +142,14 @@ class TaskOrchestrator:
             
             return {"status": "command_processed", "command": "approve"}
         
+        # Get session to determine per-chat default provider
+        session = self.sessions.get_or_create(
+            user_id=message.sender_id,
+            chat_id=message.chat_id,
+        )
+        
         try:
-            provider, prompt = self.router.resolve(message.text)
+            provider, prompt = self.router.resolve(message.text, session.provider)
         except RuntimeError as e:
             await self._safe_send_text(message.chat_id, f"❌ {e}")
             return {"status": "error", "reason": str(e)}
@@ -190,6 +260,10 @@ class TaskOrchestrator:
                 max_entries=10,
                 max_tokens=2000
             )
+            
+            # Save prompt for potential re-run after authorization
+            session.pending_prompt = prompt
+            self.sessions.save(session)
             
             # 构建包含历史上下文的提示
             enhanced_prompt = prompt
@@ -355,18 +429,20 @@ class TaskOrchestrator:
     ) -> None:
         """Stream task events and update cards/messages."""
         progress_lines: list[str] = []
+        text_lines: list[str] = []      # Only TEXT/ERROR for final result (no duplicates)
         final_files: list[str] = []
 
         try:
             # Apply global task timeout
             await asyncio.wait_for(
                 self._consume_stream(
-                    chat_id, provider, task_id, session, progress_lines, final_files
+                    chat_id, provider, task_id, session, progress_lines, text_lines, final_files
                 ),
                 timeout=self._task_timeout_seconds,
             )
         except asyncio.TimeoutError:
             progress_lines.append(f"⏱️ 任务执行超过 {self._task_timeout_seconds} 秒，已强制终止。")
+            text_lines.append(f"⏱️ 任务执行超过 {self._task_timeout_seconds} 秒，已强制终止。")
             try:
                 await provider.cancel_task(task_id)
             except Exception:
@@ -401,6 +477,7 @@ class TaskOrchestrator:
         task_id: str,
         session,
         progress_lines: list[str],
+        text_lines: list[str],
         final_files: list[str],
     ) -> None:
         try:
@@ -411,13 +488,21 @@ class TaskOrchestrator:
                     progress_lines.append(event.content)
                 elif event.type == StreamEventType.TEXT:
                     progress_lines.append(event.content)
+                    text_lines.append(event.content)
                 elif event.type == StreamEventType.ERROR:
                     progress_lines.append(f"❌ {event.content}")
+                    text_lines.append(f"❌ {event.content}")
                 elif event.type == StreamEventType.DONE:
-                    progress_lines.append(f"✅ {event.content}")
+                    # DONE content is usually a duplicate of accumulated TEXT;
+                    # append a short completion marker to progress only.
+                    progress_lines.append("✅ 完成")
 
-                # Update progress card every few events or on terminal events
-                if event.type in (StreamEventType.STATUS, StreamEventType.TOOL_USE):
+                # Update progress card on every meaningful event
+                if event.type in (
+                    StreamEventType.STATUS,
+                    StreamEventType.TOOL_USE,
+                    StreamEventType.TEXT,
+                ):
                     progress_text = "\n".join(progress_lines[-20:])
                     card = render_progress_card(
                         task_id, provider.display_name, progress_text
@@ -426,10 +511,12 @@ class TaskOrchestrator:
         except Exception as e:
             # If provider stream itself breaks, record it and re-raise so outer layer sends error card
             progress_lines.append(f"❌ 流式输出中断: {e}")
+            text_lines.append(f"❌ 流式输出中断: {e}")
             raise
 
-        # Determine final result
-        result_text = "\n".join(progress_lines)
+        # Determine final result: use text_lines (TEXT + ERROR only) to avoid
+        # duplication from STATUS prompts and DONE completion markers.
+        result_text = "\n".join(text_lines) if text_lines else "\n".join(progress_lines)
         if not result_text.strip():
             result_text = "任务执行完成，无文本输出。"
 
@@ -484,6 +571,58 @@ class TaskOrchestrator:
                     f"⚠️ 文件生成成功但上传失败：{fpath}\n错误：{e}",
                 )
 
+        # Clear pending prompt on successful completion
+        try:
+            session.pending_prompt = ""
+            self.sessions.save(session)
+        except Exception:
+            pass
+
+    async def _rerun_with_prompt(self, message: InboundMessage, prompt: str) -> None:
+        """Re-run a task with a previously saved prompt (after authorization)."""
+        try:
+            session = self.sessions.get_or_create(
+                user_id=message.sender_id,
+                chat_id=message.chat_id,
+            )
+            provider, _ = self.router.resolve(prompt, session.provider)
+            
+            if not provider:
+                await self._safe_send_text(
+                    message.chat_id,
+                    "❌ 无法找到对应的 provider 来重新执行。",
+                )
+                return
+            
+            healthy, reason = await provider.health_check()
+            if not healthy:
+                await self._safe_send_text(
+                    message.chat_id,
+                    f"⚠️ Provider 不可用: {reason}",
+                )
+                return
+            
+            workdir = provider.default_workdir() if hasattr(provider, 'default_workdir') else str(Path.home() / "workspace")
+            task_id = await provider.create_task(
+                prompt=prompt,
+                workdir=workdir,
+                session_id=session.session_id,
+                chat_id=message.chat_id,
+            )
+            
+            task_coro = self._run_task_stream(message.chat_id, provider, task_id, session)
+            task_handle = asyncio.create_task(task_coro)
+            self._running_tasks.add(task_handle)
+            task_handle.add_done_callback(self._running_tasks.discard)
+            task_handle.add_done_callback(self._log_task_exception)
+            
+        except Exception as e:
+            print(f"[TaskOrchestrator] _rerun_with_prompt error: {e}")
+            await self._safe_send_text(
+                message.chat_id,
+                f"❌ 重新执行失败: {e}",
+            )
+
     async def _safe_send_text(self, chat_id: str, text: str) -> None:
         """Send text with exception swallowed to avoid cascading failures."""
         try:
@@ -492,10 +631,16 @@ class TaskOrchestrator:
             print(f"[TaskOrchestrator] safe_send_text failed: {e}")
 
     async def _send_card(self, chat_id: str, card: dict) -> str | None:
-        """Send a card and return message_id if supported."""
+        """Send a card and return real message_id for later updates."""
         try:
+            # Prefer send_card_with_id to get real message_id for streaming updates
+            if hasattr(self.im, "send_card_with_id"):
+                ok, msg_id = await self.im.send_card_with_id(chat_id, card)
+                if ok and msg_id:
+                    return msg_id
+            # Fallback: send without id tracking
             await self.im.send_card(chat_id, "interactive", card)
-            return f"msg_{id(card)}"
+            return None
         except Exception as e:
             print(f"[TaskOrchestrator] _send_card failed: {e}")
             # Fallback to plain text summary
@@ -511,11 +656,19 @@ class TaskOrchestrator:
             return None
 
     async def _update_card(self, chat_id: str, task_id: str, card: dict) -> None:
-        """Update an existing card or send a new one."""
+        """Update an existing card by message_id, or send a new one if no id stored."""
+        msg_id = self._active_cards.get(task_id)
+        if msg_id and hasattr(self.im, "update_card"):
+            try:
+                await self.im.update_card(msg_id, card)
+                return
+            except Exception as e:
+                print(f"[TaskOrchestrator] update_card failed, fallback to new: {e}")
+        # No message_id or update failed — send as new message
         try:
             await self.im.send_card(chat_id, "interactive", card)
         except Exception as e:
-            print(f"[TaskOrchestrator] _update_card failed: {e}")
+            print(f"[TaskOrchestrator] _update_card (new) failed: {e}")
             # Fallback to text so user is not left hanging
             header = "Update"
             text_body = ""

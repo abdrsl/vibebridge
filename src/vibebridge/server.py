@@ -108,10 +108,12 @@ async def lifespan(app: FastAPI):
     if ws_mode == "websocket":
         for bot_creds in feishu_bots:
             try:
+                import os as _os
+                _port = _os.environ.get("VIBEBRIDGE_PORT", "8000")
                 ws = FeishuWebSocketClient(
                     app_id=bot_creds.app_id,
                     app_secret=bot_creds.app_secret,
-                    webhook_url="http://127.0.0.1:8000/feishu/webhook",
+                    webhook_url=f"http://127.0.0.1:{_port}/feishu/webhook",
                 )
                 await ws.start()
                 ws_clients.append(ws)
@@ -479,7 +481,7 @@ async def feishu_webhook_legacy(request: Request):
 
 
 # ============================================
-# Dashboard API (generic, no MyCompany dependency)
+# Dashboard API (generic, no external dependency)
 # ============================================
 
 @app.get("/api/agents", dependencies=[Depends(verify_api_key)])

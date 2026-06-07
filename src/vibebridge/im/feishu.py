@@ -50,6 +50,20 @@ class FeishuBot:
     async def send_card(self, chat_id: str, card_type: str, context: dict) -> bool:
         return await self._send_with_retry(self._client.send_interactive_card, chat_id, context)
 
+    async def send_card_with_id(self, chat_id: str, card: dict) -> tuple[bool, str | None]:
+        """Send card and return (success, message_id)."""
+        result = await self._client.send_interactive_card(chat_id, card)
+        if result and "data" in result and isinstance(result["data"], dict):
+            msg_id = result["data"].get("message_id")
+            if msg_id:
+                return True, msg_id
+        return False, None
+
+    async def update_card(self, message_id: str, card: dict) -> bool:
+        """Update an existing card by message_id."""
+        result = await self._client.update_interactive_card(message_id, card)
+        return result and isinstance(result, dict) and result.get("code") == 0
+
     async def upload_file(self, chat_id: str, file_path: str) -> bool:
         return await self._send_with_retry(self._client.upload_file, chat_id, file_path)
 
@@ -266,6 +280,20 @@ class FeishuMultiBotManager(BaseIMAdapter):
             logger.error("send_card failed: no bot available (bot_id=%s)", bot_id)
             return False
         return await bot.send_card(chat_id, card_type, context)
+
+    async def send_card_with_id(self, chat_id: str, card: dict, bot_id: str = "") -> tuple[bool, str | None]:
+        bot = self.get_bot(app_id=bot_id) or self.get_default_bot()
+        if not bot:
+            logger.error("send_card_with_id failed: no bot available (bot_id=%s)", bot_id)
+            return False, None
+        return await bot.send_card_with_id(chat_id, card)
+
+    async def update_card(self, message_id: str, card: dict, bot_id: str = "") -> bool:
+        bot = self.get_bot(app_id=bot_id) or self.get_default_bot()
+        if not bot:
+            logger.error("update_card failed: no bot available (bot_id=%s)", bot_id)
+            return False
+        return await bot.update_card(message_id, card)
 
     async def upload_file(self, chat_id: str, file_path: str, bot_id: str = "") -> bool:
         bot = self.get_bot(app_id=bot_id) or self.get_default_bot()

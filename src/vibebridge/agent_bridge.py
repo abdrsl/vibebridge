@@ -76,9 +76,9 @@ def resolve_agent(text: str) -> str | None:
 class AgentResultBridge:
     """Subscribes to Redis outbox.* and forwards agent results to Feishu."""
 
-    def __init__(self, redis_client: Any, feishu_manager: Any) -> None:
+    def __init__(self, redis_client: Any = None, feishu_manager: Any = None, bot_manager: Any = None) -> None:
         self._redis = redis_client
-        self._feishu = feishu_manager
+        self._feishu = feishu_manager or bot_manager
         self._task: asyncio.Task[Any] | None = None
         self._running = False
         # Track bot_id per task so replies go to the correct bot
@@ -143,29 +143,191 @@ class AgentResultBridge:
 
     async def _forward_to_feishu(self, result: dict[str, Any]) -> None:
         """Send agent result back to Feishu chat via the correct bot."""
+        status = result.get("status", "")
+        if status not in ("completed", "failed"):
+            return
+
         agent = result.get("agent", "unknown")
         task_result = result.get("result", {})
-        status = result.get("status", "completed")
         task_id = result.get("task_id", "")
 
-        # Determine which bot to use
+        # Determine which bot and chat to use
         bot_id = self._task_bot_map.pop(task_id, "")
+        chat_id = result.get("chat_id", "")
+        if not chat_id and isinstance(task_result, dict):
+            chat_id = task_result.get("chat_id", "")
+        if not bot_id:
+            bot_id = result.get("bot_id", "")
 
-        # Build a concise message
-        summary = task_result.get("summary", "") if isinstance(task_result, dict) else ""
-        if not summary and isinstance(task_result, dict):
-            summary = task_result.get("response", "")[:500]
+        summary = self._extract_summary(task_result, agent)
+        summary = self._clean_summary(summary)
 
-        text = f"🤖 **{agent}** 任务完成\n\n状态: {status}\n\n{summary}"
+        if status == "failed":
+            error = ""
+            if isinstance(task_result, dict):
+                error = task_result.get("error", "") or task_result.get("message", "")
+            text = f"❌ **{agent}** 任务失败\n\n{error or summary}"
+        else:
+            text = f"✅ **{agent}** 任务完成\n\n{summary}"
+
+        # 防级联保护：检查是否包含级联触发器
+        if self._is_cascade_trigger(text):
+            logger.warning("[AgentResultBridge] BLOCKED cascade trigger from %s: %s", agent, text[:80])
+            return
+
+        # 防重复保护：检查是否最近发送过类似内容
+        if self._is_recent_duplicate(agent, text):
+            logger.warning("[AgentResultBridge] BLOCKED duplicate from %s (recent similar send)", agent)
+            return
+
+        # 记录发送
+        self._record_send(agent, text)
+
+        if not chat_id:
+            chat_id = self._get_default_chat_id(agent)
+
+        if not chat_id:
+            return
 
         try:
-            # FeishuMultiBotManager supports bot_id kwarg
-            if hasattr(self._feishu, "send_text"):
-                await self._feishu.send_text("", text, bot_id=bot_id)
+            if self._contains_markdown(text):
+                await self._feishu.send_markdown(chat_id, text, bot_id=bot_id)
+            elif hasattr(self._feishu, "send_text"):
+                await self._feishu.send_text(chat_id, text, bot_id=bot_id)
             else:
-                logger.info("[AgentResultBridge] Result from %s (bot=%s...): %s", agent, bot_id[:8] if bot_id else "default", text[:200])
+                logger.info("[AgentResultBridge] Result from %s (chat=%s, bot=%s...): %s",
+                            agent, chat_id[:12] if chat_id else "(no chat)", bot_id[:8] if bot_id else "default", text[:200])
         except Exception as exc:
             logger.error("Failed to send Feishu message: %s", exc)
+
+    @staticmethod
+    def _contains_markdown(text: str) -> bool:
+        if not isinstance(text, str):
+            return False
+        markers = ("**", "*", "# ", "[", "`")
+        return any(marker in text for marker in markers)
+
+    _NOISE_PATTERNS = [
+        "我来先查看项目现状。",
+        "我来分析一下。",
+        "让我看看。",
+    ]
+
+    _CASCADE_PATTERNS = [
+        # 引发级联回复的关键词
+        r"请.*自我介绍",
+        r"请.*介绍.*自己",
+        r"大家.*介绍",
+        r"各位.*介绍",
+        r"依次.*介绍",
+        r"按顺序.*介绍",
+        r"来做.*介绍",
+        r"做一下.*介绍",
+        r"@所有人.*请",
+        r"@所有人.*介绍",
+        r"@_all.*请",
+        r"@_all.*介绍",
+        r"请.*回复",
+        r"请.*发言",
+        r"请.*依次",
+        r"请.*按顺序",
+        r"接下来.*请",
+        r"请各位.*",
+        r"请大家.*",
+        r"请各位.*介绍",
+        r"请大家.*介绍",
+        r"现在.*请.*介绍",
+        r"接下来.*请.*介绍",
+    ]
+
+    # Agent级别的去重：记录最近发送的内容
+    _agent_recent_sends: dict[str, tuple[float, str]] = {}
+    _agent_duplicate_window_seconds: float = 300.0  # 5分钟内不重复发送类似内容
+    _agent_duplicate_similarity_threshold: float = 0.7
+
+    def _is_cascade_trigger(self, text: str) -> bool:
+        """检查文本是否包含级联触发关键词"""
+        import re
+        text_lower = text.lower()
+        for pattern in self._CASCADE_PATTERNS:
+            if re.search(pattern, text_lower):
+                return True
+        return False
+
+    def _is_recent_duplicate(self, agent: str, text: str) -> bool:
+        """检查Agent是否最近发送过类似内容"""
+        import time
+        import difflib
+        
+        if agent not in self._agent_recent_sends:
+            return False
+        
+        last_time, last_text = self._agent_recent_sends[agent]
+        if time.time() - last_time > self._agent_duplicate_window_seconds:
+            return False
+        
+        # 计算相似度
+        similarity = difflib.SequenceMatcher(None, last_text, text).ratio()
+        return similarity > self._agent_duplicate_similarity_threshold
+
+    def _record_send(self, agent: str, text: str) -> None:
+        """记录Agent发送的内容"""
+        import time
+        self._agent_recent_sends[agent] = (time.time(), text)
+
+    def _clean_summary(self, text: str) -> str:
+        if not isinstance(text, str):
+            text = str(text)
+        for pattern in self._NOISE_PATTERNS:
+            text = text.replace(pattern, "")
+        # Deduplicate sentences
+        sentences = [s.strip() for s in text.split("。") if s.strip()]
+        seen: set[str] = set()
+        unique: list[str] = []
+        for s in sentences:
+            if s not in seen:
+                seen.add(s)
+                unique.append(s)
+        text = "。".join(unique)
+        # Truncate
+        max_len = 2000
+        if len(text) > max_len:
+            text = text[:max_len] + "..."
+        return text
+
+    def _extract_summary(self, result: Any, agent_name: str = "") -> str:
+        if isinstance(result, str):
+            return result
+        if not isinstance(result, dict):
+            return ""
+        for key in ("summary", "response", "result"):
+            val = result.get(key)
+            if val:
+                return str(val)
+        return ""
+
+    def _get_default_chat_id(self, agent: str) -> str:
+        """Resolve default chat_id from local Feishu bot configuration."""
+        try:
+            from vibebridge.config import get_config
+
+            cfg = get_config()
+            for bot in cfg.feishu.bots:
+                if bot.agent == agent:
+                    if bot.chat_id:
+                        return bot.chat_id
+                    if bot.p2p_chat_id:
+                        return bot.p2p_chat_id
+            # Fallback to ceo-agent config
+            for bot in cfg.feishu.bots:
+                if bot.agent == "ceo-agent":
+                    if bot.p2p_chat_id:
+                        return bot.p2p_chat_id
+                    if bot.chat_id:
+                        return bot.chat_id
+        except Exception:
+            pass
+        return ""
 
 
 class AgentTaskDispatcher:
@@ -209,6 +371,43 @@ class AgentTaskDispatcher:
         except Exception as exc:
             logger.error("Failed to dispatch to %s: %s", channel, exc)
             return None
+
+    async def dispatch_multi(self, text: str, chat_id: str, sender: str, message_id: str, bot_id: str = "") -> list[str]:
+        """Dispatch a Feishu message to multiple matched agents.
+
+        Returns:
+            List of agent names dispatched.
+        """
+        from vibebridge.agent_config import resolve_all
+
+        agents = resolve_all(text)
+        dispatched: list[str] = []
+
+        import re
+        clean_text = re.sub(r"@[\w\-\u4e00-\u9fff]+\s*", "", text).strip()
+
+        for agent in agents:
+            task = {
+                "type": "task",
+                "task_id": f"feishu-{message_id}",
+                "from": sender,
+                "to": agent,
+                "description": clean_text,
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "bot_id": bot_id,
+                "source": "feishu",
+                "timestamp": __import__("datetime").datetime.now().isoformat(),
+            }
+
+            try:
+                self._redis.lpush(f"taskq.{agent}", json.dumps(task, ensure_ascii=False))
+                dispatched.append(agent)
+                logger.info("Dispatched Feishu msg to taskq.%s (bot=%s...): %s", agent, bot_id[:8] if bot_id else "default", clean_text[:60])
+            except Exception as exc:
+                logger.error("Failed to dispatch to taskq.%s: %s", agent, exc)
+
+        return dispatched
 
 
 # ── Auto Review Router ──────────────────────────────────────────────

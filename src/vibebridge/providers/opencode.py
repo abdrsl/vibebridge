@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import AsyncIterator
 
 from .base import BaseProvider, StreamEvent, StreamEventType
+from ..constitution_guard import is_dangerous_command, format_auth_prompt
 
 
 class TaskStatus(str, Enum):
@@ -28,6 +29,7 @@ class OpenCodeTask:
     task_id: str
     user_message: str
     workdir: str
+    session_id: str = ""
     status: TaskStatus = TaskStatus.PENDING
     process: asyncio.subprocess.Process | None = None
     output_lines: list[str] = field(default_factory=list)
@@ -52,6 +54,15 @@ class OpenCodeProvider(BaseProvider):
         self._default_workdir = os.path.expanduser(default_workdir)
         self._tasks: dict[str, OpenCodeTask] = {}
         self._lock = asyncio.Lock()
+        self._authorized_operations: dict[str, list[str]] = {}
+        self._session_mapping: dict[str, str] = {}
+
+    def authorize(self, session_id: str, operation: str) -> None:
+        """Authorize a dangerous operation for a session."""
+        ops = self._authorized_operations.setdefault(session_id, [])
+        op = operation.strip()
+        if op and op not in ops:
+            ops.append(op)
 
     def _auto_detect_binary(self) -> str:
         if env := os.getenv("OPENCODE_BINARY"):
@@ -117,6 +128,7 @@ class OpenCodeProvider(BaseProvider):
             task_id=task_id,
             user_message=prompt,
             workdir=str(wd),
+            session_id=session_id,
         )
         async with self._lock:
             self._tasks[task_id] = task
@@ -141,6 +153,22 @@ class OpenCodeProvider(BaseProvider):
 
         process: asyncio.subprocess.Process | None = None
         try:
+            # v2026: Session continuity — map VibeBridge session_id to OpenCode session
+            # OpenCode requires --session to reference an EXISTING session;
+            # passing a non-existent session ID causes "Session not found" (exit code 1).
+            # Strategy:
+            #   - First call for a vibebridge session: run WITHOUT --session so OpenCode
+            #     auto-creates one. We extract the sessionID from the first JSON event.
+            #   - Subsequent calls: use --session <id> --continue to resume context.
+            session_mapping: dict[str, str] = getattr(self, "_session_mapping", {})
+            oc_session = session_mapping.get(task.session_id)
+            if oc_session:
+                # Continue existing OpenCode session
+                session_args = ["--session", oc_session, "--continue"]
+            else:
+                # First call: let OpenCode create the session; we'll capture its ID
+                session_args = []
+
             cmd = [
                 self.binary,
                 "run",
@@ -151,6 +179,7 @@ class OpenCodeProvider(BaseProvider):
                 "--dangerously-skip-permissions",  # 自动批准权限，避免手动确认
                 "--title",
                 f"VibeBridge Task {task_id}",
+                *session_args,
                 task.user_message,
             ]
 
@@ -194,6 +223,16 @@ class OpenCodeProvider(BaseProvider):
                             event = json.loads(line)
                             event_type = event.get("type", "")
 
+                            # Capture OpenCode session ID on first event (step_start)
+                            if not oc_session and event_type == "step_start":
+                                sid = event.get("sessionID", "")
+                                if not sid:
+                                    sid = event.get("part", {}).get("sessionID", "")
+                                if sid:
+                                    oc_session = sid
+                                    session_mapping[task.session_id] = sid
+                                    self._session_mapping = session_mapping
+
                             if event_type == "tool_use":
                                 part = event.get("part", {})
                                 state = part.get("state", {})
@@ -203,11 +242,39 @@ class OpenCodeProvider(BaseProvider):
                                     desc = input_data.get("description", "")
                                     command = input_data.get("command", "")
                                     if command:
-                                        display = f"🛠️ {tool}: {command[:100]}..."
+                                        display = f"🛠️ {tool}: {command[:300]}"
                                     else:
-                                        display = f"🛠️ {tool}: {desc[:100]}"
+                                        display = f"🛠️ {tool}: {desc[:300]}"
                                 else:
-                                    display = f"🛠️ {tool}: {str(input_data)[:100]}"
+                                    display = f"🛠️ {tool}: {str(input_data)[:300]}"
+
+                                # ── Constitutional Guard: intercept dangerous commands ──
+                                cmd_to_check = command if command else desc
+                                is_danger, danger_desc = is_dangerous_command(cmd_to_check)
+                                if is_danger:
+                                    auth_ops = self._authorized_operations.get(task.session_id, [])
+                                    authorized = False
+                                    for auth in auth_ops:
+                                        if auth in cmd_to_check or cmd_to_check in auth:
+                                            authorized = True
+                                            break
+                                    if not authorized:
+                                        # Kill the subprocess immediately
+                                        if process and process.returncode is None:
+                                            try:
+                                                process.kill()
+                                                await process.wait()
+                                            except Exception:
+                                                pass
+                                        auth_msg = format_auth_prompt(cmd_to_check, danger_desc)
+                                        task.error = auth_msg
+                                        yield StreamEvent(
+                                            type=StreamEventType.ERROR,
+                                            content=auth_msg,
+                                            task_id=task_id,
+                                        )
+                                        return  # Stop streaming
+
                                 task.output_lines.append(display)
                                 yield StreamEvent(
                                     type=StreamEventType.TOOL_USE,

@@ -48,7 +48,16 @@ data/*.txt
 data/memory.json
 !data/tasks/.gitkeep
 logs/
+.logs/
 *.log
+
+# Runtime config
+config/settings.json
+config/commands.json
+
+# Runtime directories
+.system/
+.pids/
 
 # Debug and test files
 debug_encryption.py
