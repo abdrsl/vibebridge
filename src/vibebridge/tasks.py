@@ -480,6 +480,8 @@ class TaskOrchestrator:
         text_lines: list[str],
         final_files: list[str],
     ) -> None:
+        has_error_event = False
+        has_text_output = False
         try:
             async for event in provider.stream_task(task_id):
                 if event.type == StreamEventType.STATUS:
@@ -489,9 +491,11 @@ class TaskOrchestrator:
                 elif event.type == StreamEventType.TEXT:
                     progress_lines.append(event.content)
                     text_lines.append(event.content)
+                    has_text_output = True
                 elif event.type == StreamEventType.ERROR:
                     progress_lines.append(f"❌ {event.content}")
                     text_lines.append(f"❌ {event.content}")
+                    has_error_event = True
                 elif event.type == StreamEventType.DONE:
                     # DONE content is usually a duplicate of accumulated TEXT;
                     # append a short completion marker to progress only.
@@ -502,6 +506,7 @@ class TaskOrchestrator:
                     StreamEventType.STATUS,
                     StreamEventType.TOOL_USE,
                     StreamEventType.TEXT,
+                    StreamEventType.ERROR,
                 ):
                     progress_text = "\n".join(progress_lines[-20:])
                     card = render_progress_card(
@@ -512,6 +517,7 @@ class TaskOrchestrator:
             # If provider stream itself breaks, record it and re-raise so outer layer sends error card
             progress_lines.append(f"❌ 流式输出中断: {e}")
             text_lines.append(f"❌ 流式输出中断: {e}")
+            has_error_event = True
             raise
 
         # Determine final result: use text_lines (TEXT + ERROR only) to avoid
@@ -526,17 +532,30 @@ class TaskOrchestrator:
         except Exception as e:
             print(f"[TaskOrchestrator] file detection error: {e}")
 
-        try:
-            result_card = render_result_card(
-                task_id, provider.display_name, result_text, final_files
-            )
-            await self._update_card(chat_id, task_id, result_card)
-        except Exception as e:
-            await self._safe_send_text(
-                chat_id,
-                f"✅ 任务完成（卡片发送失败，降级为文本）\n\n{result_text[:1500]}",
-            )
-            raise
+        # If there were errors and no successful text output, show an error card
+        # instead of a success result card.
+        if has_error_event and not has_text_output:
+            try:
+                error_card = render_error_card(task_id, result_text)
+                await self._update_card(chat_id, task_id, error_card)
+            except Exception as e:
+                await self._safe_send_text(
+                    chat_id,
+                    f"❌ 任务失败（卡片发送失败，降级为文本）\n\n{result_text[:1500]}",
+                )
+                raise
+        else:
+            try:
+                result_card = render_result_card(
+                    task_id, provider.display_name, result_text, final_files
+                )
+                await self._update_card(chat_id, task_id, result_card)
+            except Exception as e:
+                await self._safe_send_text(
+                    chat_id,
+                    f"✅ 任务完成（卡片发送失败，降级为文本）\n\n{result_text[:1500]}",
+                )
+                raise
 
         try:
             session.add_message("assistant", result_text)

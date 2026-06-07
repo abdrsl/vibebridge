@@ -197,6 +197,8 @@ class OpenCodeProvider(BaseProvider):
             final_result: str | None = None
             has_error = False
             total_deadline = asyncio.get_event_loop().time() + 1200  # 20 min total
+            # Collect non-JSON stderr/stdout lines for diagnostics
+            non_json_lines: list[str] = []
 
             if stdout is None:
                 raise RuntimeError("Subprocess stdout is None")
@@ -294,7 +296,15 @@ class OpenCodeProvider(BaseProvider):
                                     )
 
                             elif event_type == "error":
-                                error_msg = event.get("message", "Unknown error")
+                                # Try multiple fields for a meaningful error message
+                                error_msg = event.get("message", "")
+                                if not error_msg:
+                                    error_msg = event.get("error", "")
+                                if not error_msg:
+                                    part = event.get("part", {})
+                                    error_msg = part.get("message", "") if isinstance(part, dict) else ""
+                                if not error_msg:
+                                    error_msg = "OpenCode 返回错误，未提供具体信息"
                                 has_error = True
                                 task.error = error_msg
                                 yield StreamEvent(
@@ -313,6 +323,8 @@ class OpenCodeProvider(BaseProvider):
                                 task.final_result = final_text
 
                         except json.JSONDecodeError:
+                            # Keep non-JSON output for later error diagnostics
+                            non_json_lines.append(line)
                             pass
 
                 except asyncio.TimeoutError:
@@ -336,6 +348,32 @@ class OpenCodeProvider(BaseProvider):
                 has_error = True
                 task.error = "OpenCode process did not exit in time after output ended"
 
+            # Build a diagnostic message from non-JSON stderr/stdout output
+            diagnostic = ""
+            if non_json_lines:
+                combined = " ".join(non_json_lines)
+                # Detect known error patterns from opencode logs
+                if "Insufficient Balance" in combined:
+                    diagnostic = "DeepSeek API 余额不足，请充值后重试"
+                elif "AI_APICallError" in combined:
+                    # Try to extract the actual error from the log line
+                    for line in non_json_lines:
+                        if "error=" in line:
+                            import re as _re
+                            m = _re.search(r'error=\{.*?"error"\s*:\s*\{.*?"message"\s*:\s*"([^"]+)"', line)
+                            if m:
+                                diagnostic = f"API 调用错误: {m.group(1)}"
+                                break
+                    if not diagnostic:
+                        diagnostic = "API 调用失败（可能是密钥无效或网络问题）"
+                elif "ECONNREFUSED" in combined or "connect" in combined.lower():
+                    diagnostic = "网络连接失败，无法连接到 API 服务器"
+                elif "timeout" in combined.lower():
+                    diagnostic = "API 请求超时"
+                else:
+                    # Keep the last few non-JSON lines as hint
+                    diagnostic = "OpenCode 输出解析失败: " + " | ".join(non_json_lines[-3:])
+
             if process.returncode == 0:
                 if final_result and not has_error:
                     await self._update_task(task_id, status=TaskStatus.COMPLETED)
@@ -355,7 +393,7 @@ class OpenCodeProvider(BaseProvider):
                             task_id=task_id,
                         )
                     else:
-                        error_msg = task.error or f"OpenCode exited with code {process.returncode}"
+                        error_msg = task.error or diagnostic or "OpenCode 未产生任何输出"
                         await self._update_task(
                             task_id,
                             status=TaskStatus.FAILED,
@@ -367,7 +405,7 @@ class OpenCodeProvider(BaseProvider):
                             task_id=task_id,
                         )
             else:
-                error_msg = task.error or f"OpenCode exited with code {process.returncode}"
+                error_msg = task.error or diagnostic or f"OpenCode 进程异常退出（退出码 {process.returncode}）"
                 await self._update_task(
                     task_id,
                     status=TaskStatus.FAILED,
